@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#101d33">
+  <title>The GB Dash | GenBI Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark"><img src="Logo Genbi.jpeg" alt="Logo GenBI"></div>
+        <div class="brand-title"><strong>The GB Dash <span class="version-badge">V1</span></strong><small>GenBI Dashboard</small></div>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-page="overview"><span>▦</span> Dashboard</button>
+        <button class="nav-item" data-page="members"><span>♙</span> Monitoring Anggota</button>
+        <button class="nav-item" data-page="tasks"><span>▤</span> Monitoring Tugas</button>
+        <button class="nav-item" data-page="activities"><span>▣</span> Kalender Acara</button>
+      </nav>
+      <div class="nav-bottom">
+        
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="mobile-menu" id="menuBtn" aria-label="Buka menu">☰</button>
+        
+      </header>
+      <section class="content" id="content"></section>
+      <footer>THE GB DASH · V1</footer>
+    </main>
+  </div>
+  <dialog class="modal" id="detailModal"><div style="padding:24px"><div class="modal-head"><div><p class="eyebrow">DETAIL ACARA</p><h2 id="detailTitle">Detail Acara</h2></div><button class="icon-btn" type="button" aria-label="Tutup" onclick="document.getElementById('detailModal').close()">×</button></div><div id="detailBody" class="detail-body"></div><div class="modal-actions"><button class="btn btn-light" type="button" onclick="document.getElementById('detailModal').close()">Tutup</button></div></div></dialog>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="script.js"></script>
+</body>
+</html>
