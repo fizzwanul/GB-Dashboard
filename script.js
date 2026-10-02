@@ -266,11 +266,27 @@ function memberDetailPage() {
 }
 
 // === 6. MODAL UPLOAD LINK & TAMBAH PROKER ===
-function openUploadModal(idProker, progres, status) {
+function openUploadModal(idProker) {
+  // Ambil data task berdasarkan ID langsung dari globalData agar akurat
+  const task = globalData.tasks.find(t => String(t.iDProker || t.idProker || t.id) === String(idProker));
+  if (!task) {
+    toast("ID Proker tidak ditemukan!");
+    return;
+  }
+  
   $("#formProkerId").value = idProker;
-  $("#formProgres").value = progres;
-  $("#formStatus").value = status;
-  $("#formNewLink").value = "";
+  $("#modalProkerTitle").textContent = `Update: ${task.namaProgramKerja || task.namaProker || idProker}`;
+  
+  // Konversi nilai desimal ke persen untuk input
+  const currentProg = Number(task.progres !== undefined ? task.progres : 0);
+  $("#formProgres").value = currentProg <= 1 ? Math.round(currentProg * 100) : currentProg;
+  
+  $("#formStatus").value = task.status || "Belum Mulai";
+  $("#formPic").value = task.pIC || task.penanggungJawab || task.pj || "";
+  $("#formCatatan").value = task.catatan || "";
+  $("#formExistingLink").value = task.linkBuktiUtama || task.bukti || task.linkBukti || "";
+  $("#formNewLink").value = ""; // Kosongkan input link baru
+  
   $("#uploadModal")?.showModal();
 }
 
@@ -282,22 +298,14 @@ async function handleSaveProker(e) {
     idProker: $("#formProkerId").value,
     progres: Number($("#formProgres").value),
     status: $("#formStatus").value,
+    pic: $("#formPic").value.trim(),
+    catatan: $("#formCatatan").value.trim(),
+    existingEvidence: $("#formExistingLink").value,
     newLink: $("#formNewLink").value.trim()
   };
 
   toast("Menyimpan data ke Google Sheets...");
   await sendPostPayload(payload);
-}
-
-async function handleAddProkerPrompt() {
-  const nama = prompt("Masukkan Nama Program Kerja / Tugas Baru:");
-  if (!nama) return;
-  toast("Menambahkan tugas baru...");
-  await sendPostPayload({
-    action: "addProker",
-    division: currentDivision,
-    prokerData: { namaProker: nama, target: 100, progres: 0, status: "Belum Mulai" }
-  });
 }
 
 async function sendPostPayload(payload) {

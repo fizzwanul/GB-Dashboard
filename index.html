@@ -44,37 +44,52 @@
   </div>
  <!-- Modal Add / Upload Proker -->
 <dialog class="modal" id="uploadModal">
-  <div style="padding:24px">
+  <div style="padding:24px; max-width: 500px; width: 100%;">
     <div class="modal-head">
       <div>
         <p class="eyebrow">MONITORING PROKER</p>
-        <h2 id="modalProkerTitle">Update Progres & Bukti</h2>
+        <h2 id="modalProkerTitle">Update Proker</h2>
       </div>
       <button class="icon-btn" type="button" onclick="document.getElementById('uploadModal').close()">×</button>
     </div>
     <form id="prokerForm" onsubmit="handleSaveProker(event)">
       <input type="hidden" id="formProkerId">
+      <input type="hidden" id="formExistingLink">
+      
       <div class="field" style="margin-bottom:12px">
-        <label>Progres (%) [0-100]</label>
-        <input type="number" id="formProgres" min="0" max="100" required>
+        <label>Penanggung Jawab (PIC)</label>
+        <input type="text" id="formPic" placeholder="Nama PIC / Penanggung jawab">
       </div>
+
+      <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+        <div class="field" style="flex: 1;">
+          <label>Progres (%) [0-100]</label>
+          <input type="number" id="formProgres" min="0" max="100" required>
+        </div>
+        <div class="field" style="flex: 1;">
+          <label>Status Proker</label>
+          <select id="formStatus">
+            <option value="Belum Mulai">Belum Mulai</option>
+            <option value="Proses">Proses</option>
+            <option value="Terkendala">Terkendala</option>
+            <option value="Selesai">Selesai</option>
+          </select>
+        </div>
+      </div>
+
       <div class="field" style="margin-bottom:12px">
-        <label>Status Proker</label>
-        <select id="formStatus">
-          <option value="Belum Mulai">Belum Mulai</option>
-          <option value="Proses">Proses</option>
-          <option value="Terkendala">Terkendala</option>
-          <option value="Selesai">Selesai</option>
-        </select>
+        <label>Link Bukti Tambahan</label>
+        <textarea id="formNewLink" placeholder="https://... (Link baru otomatis ditambahkan, link lama aman)"></textarea>
       </div>
+
       <div class="field" style="margin-bottom:12px">
-        <label>Link Bukti (G-Drive, IG, dll)</label>
-        <!-- Textarea untuk banyak link -->
-        <textarea id="formNewLink" placeholder="https://... (Pisahkan dengan Enter jika lebih dari 1 link)"></textarea>
+        <label>Catatan</label>
+        <textarea id="formCatatan" placeholder="Catatan atau kendala proker..."></textarea>
       </div>
+
       <div class="modal-actions">
         <button class="btn btn-light" type="button" onclick="document.getElementById('uploadModal').close()">Batal</button>
-        <button class="btn btn-primary" type="submit">Simpan & Sync</button>
+        <button class="btn btn-primary" type="submit">Simpan Perubahan</button>
       </div>
     </form>
   </div>
