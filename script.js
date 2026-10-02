@@ -169,7 +169,7 @@ function memberRow(m) {
       <td><strong>${esc(id)}</strong></td>
       <td><strong>${esc(m.namaLengkap || m.nama || "—")}</strong></td>
       <td>${esc(m.divisi || currentDivision)}</td>
-      <td><div class="row-actions"><button class="mini-btn" data-member-detail="${esc(id)}">Detail</button></div></td>
+      <td><button class="mini-btn" data-member-detail="${esc(id)}">Detail</button></td>
     </tr>
   `;
 }
@@ -184,9 +184,67 @@ function membersPage() {
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>ID Anggota</th><th>Nama Lengkap</th><th>Divisi</th><th>Aksi</th></tr>
+            <tr>
+              <th>ID Anggota</th>
+              <th>Nama Lengkap</th>
+              <th>Divisi</th>
+              <th>Aksi</th>
+            </tr>
           </thead>
           <tbody>${rows || '<tr><td colspan="4" class="empty-cell">Belum ada anggota.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function memberDetailPage() {
+  const members = globalData.members || [];
+  const m = members.find(x => String(x.idAnggota || x.id) === String(selectedMemberId));
+  
+  if (!m) return membersPage();
+
+  const backBtn = `<button class="btn btn-light" data-page="members">← Kembali ke daftar</button>`;
+  
+  // Data dummy sementara untuk melihat bentuk tabel Tracker (Nanti disambung ke Google Sheets)
+  const trackerDummy = [
+    { date: "2026-09-18", text: "Mengikuti GenBI Mengajar - Kehadiran dan kontribusi aktif" },
+    { date: "2026-09-20", text: "Disiplin administrasi - Pengumpulan laporan tepat waktu" }
+  ];
+
+  const trackerRows = trackerDummy.map(t => `
+    <tr>
+      <td style="white-space: nowrap;">${esc(t.date)}</td>
+      <td><strong>${esc(t.text.split(' - ')[0])}</strong><br><small>${esc(t.text.split(' - ')[1] || "")}</small></td>
+    </tr>
+  `).join("");
+
+  return `
+    ${head("MONITORING ANGGOTA", "Detail Anggota", `Profil dan catatan tracker ${esc(m.namaLengkap || m.nama)}.`, backBtn)}
+    
+    <div class="stats-grid">
+      ${stat("Nama Anggota", esc(m.namaLengkap || m.nama), "♙", "blue", esc(m.idAnggota || m.id))}
+      ${stat("Divisi", esc(m.divisi || currentDivision), "▣", "purple", "Divisi aktif")}
+      ${stat("Role / Jabatan", esc(m.role || m.jabatan || "Anggota"), "✦", "green", "Posisi kepengurusan")}
+      ${stat("Email", esc(m.email || "Belum diatur"), "◷", "orange", "Kontak anggota")}
+    </div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Catatan Tracker Jabatan</h2>
+          <p>Daftar riwayat aktivitas, peringatan, atau catatan evaluasi anggota.</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 150px;">Tanggal</th>
+              <th>Aktivitas / Catatan</th>
+            </tr>
+          </thead>
+          <tbody>${trackerRows || '<tr><td colspan="2" class="empty-cell">Belum ada catatan tracker.</td></tr>'}</tbody>
         </table>
       </div>
     </section>
