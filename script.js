@@ -29,11 +29,27 @@ function applyRolePermissions() {
 
 // === 2. FETCH DATA DIVISI ===
 async function fetchDivisionData() {
+  const cacheKey = `genbi_cache_${currentDivision}`;
+  const cachedData = sessionStorage.getItem(cacheKey);
+
+  if (cachedData) {
+    try {
+      // 1. Tampilkan data dari cache secara INSTAN (0 detik loading)
+      const parsed = JSON.parse(cachedData);
+      globalData.members = parsed.members;
+      globalData.tasks = parsed.tasks;
+      render(); // Halaman langsung muncul tanpa teks "Memuat..."
+    } catch (e) {}
+  } else {
+    // Kalau belum ada cache sama sekali, tampilkan teks loading standar
+    if (!isFetching) {
+      $("#content").innerHTML = `<div style="text-align:center; padding:50px;"><strong>Memuat Data Google Sheets (${currentDivision.toUpperCase()})...</strong></div>`;
+    }
+  }
+
+  // 2. Tarik data terbaru dari Google Sheets di BALIK LAYAR (Background Sync)
   if (isFetching) return;
   isFetching = true;
-
-  globalData = { members: [], tasks: [], dashboard: [] };
-  $("#content").innerHTML = `<div style="text-align:center; padding:50px;"><strong>Memuat Data Google Sheets (${currentDivision.toUpperCase()})...</strong></div>`;
 
   try {
     const [membersRes, kpiRes] = await Promise.all([
@@ -41,11 +57,27 @@ async function fetchDivisionData() {
       fetch(`${API_URL}?action=getKPI&division=${currentDivision}`).then(r => r.json())
     ]);
 
-    globalData.members = membersRes.data || [];
-    globalData.tasks = kpiRes.data || [];
-    render();
+    const freshMembers = membersRes.data || [];
+    const freshTasks = kpiRes.data || [];
+
+    // Bandingkan apakah ada perubahan data
+    const hasChanged = JSON.stringify(freshTasks) !== JSON.stringify(globalData.tasks);
+
+    if (hasChanged || !cachedData) {
+      globalData.members = freshMembers;
+      globalData.tasks = freshTasks;
+
+      // Update cache dengan data terbaru
+      sessionStorage.setItem(cacheKey, JSON.stringify({
+        members: freshMembers,
+        tasks: freshTasks
+      }));
+
+      // Render ulang layar secara mulus jika ada perubahan data dari server
+      render();
+    }
   } catch (e) {
-    toast("Gagal memuat data divisi!");
+    // Jika offline/gagal fetch, biarkan pakai data cache yang sudah ada
   } finally {
     isFetching = false;
   }
