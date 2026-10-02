@@ -42,7 +42,42 @@
       <footer>THE GB DASH · V1</footer>
     </main>
   </div>
-  <dialog class="modal" id="detailModal"><div style="padding:24px"><div class="modal-head"><div><p class="eyebrow">DETAIL ACARA</p><h2 id="detailTitle">Detail Acara</h2></div><button class="icon-btn" type="button" aria-label="Tutup" onclick="document.getElementById('detailModal').close()">×</button></div><div id="detailBody" class="detail-body"></div><div class="modal-actions"><button class="btn btn-light" type="button" onclick="document.getElementById('detailModal').close()">Tutup</button></div></div></dialog>
+ <!-- Modal Add / Upload Proker -->
+<dialog class="modal" id="uploadModal">
+  <div style="padding:24px">
+    <div class="modal-head">
+      <div>
+        <p class="eyebrow">MONITORING PROKER</p>
+        <h2 id="modalProkerTitle">Update Progres & Bukti</h2>
+      </div>
+      <button class="icon-btn" type="button" onclick="document.getElementById('uploadModal').close()">×</button>
+    </div>
+    <form id="prokerForm" onsubmit="handleSaveProker(event)">
+      <input type="hidden" id="formProkerId">
+      <div class="field" style="margin-bottom:12px">
+        <label>Progres (%) [0-100]</label>
+        <input type="number" id="formProgres" min="0" max="100" required>
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label>Status Proker</label>
+        <select id="formStatus">
+          <option value="Belum Mulai">Belum Mulai</option>
+          <option value="Proses">Proses</option>
+          <option value="Selesai">Selesai</option>
+        </select>
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label>Link Bukti (G-Drive, IG, dll)</label>
+        <!-- Textarea untuk banyak link -->
+        <textarea id="formNewLink" placeholder="https://... (Pisahkan dengan Enter jika lebih dari 1 link)"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-light" type="button" onclick="document.getElementById('uploadModal').close()">Batal</button>
+        <button class="btn btn-primary" type="submit">Simpan & Sync</button>
+      </div>
+    </form>
+  </div>
+</dialog>
   <div class="toast" id="toast" role="status"></div>
   <script src="script.js"></script>
 </body>
