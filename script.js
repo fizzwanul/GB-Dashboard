@@ -103,17 +103,19 @@ function overview() {
 }
 
 function taskRow(t) {
-  // Menangkap key iDProker yang dikirim dari backend Google Sheets
-  const prokerId = t.iDProker || t.idProker || t.id || "";
-  const hasBukti = Boolean(t.linkBuktiUtama || t.bukti || t.linkBukti);
+  const prokerId = t.iDProker || t.idProker || t.IDProker || t.id || "";
+  const namaTugas = t.namaProgramKerja || t.namaProker || t.namaTugas || t.nama || "—";
+  const picTugas = t.pIC || t.penanggungJawab || t.pj || "—";
+  const linkBukti = t.linkBuktiUtama || t.bukti || t.linkBukti || "";
+  const hasBukti = Boolean(linkBukti);
   const progresNum = Number(t.progres || 0);
   
   return `
     <tr>
       <td><strong>${esc(prokerId)}</strong></td>
-      <td>${esc(t.namaProgramKerja || t.namaProker || t.namaTugas || t.nama || "—")}</td>
+      <td>${esc(namaTugas)}</td>
       <td>${esc(t.divisi || currentDivision)}</td>
-      <td>${esc(t.pIC || t.penanggungJawab || t.pj || "—")}</td>
+      <td>${esc(picTugas)}</td>
       <td>${badge(t.status || "Belum Mulai")}</td>
       <td>
         <div style="display:flex;align-items:center;gap:8px">
@@ -122,7 +124,7 @@ function taskRow(t) {
         </div>
       </td>
       <td>${esc(t.tenggat || t.tenggatWaktu || "—")}</td>
-      <td>${renderEvidenceLinks(t.linkBuktiUtama || t.bukti || t.linkBukti)}</td>
+      <td>${renderEvidenceLinks(linkBukti)}</td>
       <td>${esc(t.catatan || "—")}</td>
       <td><button class="mini-btn" onclick="openUploadModal('${esc(prokerId)}', '${progresNum}', '${esc(t.status)}')">${hasBukti ? "Edit Bukti" : "+ Tambah Bukti"}</button></td>
     </tr>
