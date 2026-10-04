@@ -377,7 +377,7 @@ async function sendPostPayload(payload) {
   try {
     const res = await fetch(API_URL, { method: "POST", body: JSON.stringify(payload) }).then(r => r.json());
     if (res.status === "success") {
-      toast("Berhasil disimpan!");
+      toast(res.message || "Berhasil disimpan!");
       $("#uploadModal")?.close();
       
       // PENTING: Hapus cache ingatan lama agar layar langsung mengambil data baru!
