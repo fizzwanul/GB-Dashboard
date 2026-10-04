@@ -204,11 +204,18 @@ function tasksPage() {
 }
 
 // === 5. HALAMAN ANGGOTA & DETAIL PROFIL (DENGAN TRACKER TAB) ===
+// Backend mengubah header "ID Anggota" menjadi key "iDAnggota", jadi cek beberapa kemungkinan.
+// Kalau kolom ID kosong, pakai nama lengkap agar tombol Detail tetap berfungsi.
+function getMemberId(m) {
+  return String(m.iDAnggota || m.idAnggota || m.IDAnggota || m.id || m.namaLengkap || m.nama || "").trim();
+}
+
 function memberRow(m) {
-  const id = m.idAnggota || m.id || "—";
+  const id = getMemberId(m);
+  const idTampil = m.iDAnggota || m.idAnggota || m.IDAnggota || m.id || "—";
   return `
     <tr>
-      <td><strong>${esc(id)}</strong></td>
+      <td><strong>${esc(idTampil)}</strong></td>
       <td><strong>${esc(m.namaLengkap || m.nama || "—")}</strong></td>
       <td>${esc(m.divisi || currentDivision)}</td>
       <td><button class="mini-btn" data-member-detail="${esc(id)}">Detail</button></td>
@@ -242,7 +249,7 @@ function membersPage() {
 
 function memberDetailPage() {
   const members = globalData.members || [];
-  const m = members.find(x => String(x.idAnggota || x.id) === String(selectedMemberId));
+  const m = members.find(x => getMemberId(x) === String(selectedMemberId));
   
   if (!m) return membersPage();
 
@@ -276,7 +283,7 @@ function memberDetailPage() {
     ${head("MONITORING ANGGOTA", "Detail Anggota", `Profil dan catatan tracker ${esc(m.namaLengkap || m.nama)}.`, backBtn)}
     
     <div class="stats-grid">
-      ${stat("Nama Anggota", esc(m.namaLengkap || m.nama), "♙", "blue", esc(m.idAnggota || m.id))}
+      ${stat("Nama Anggota", esc(m.namaLengkap || m.nama), "♙", "blue", esc(m.iDAnggota || m.idAnggota || m.id || "—"))}
       ${stat("Divisi", esc(m.divisi || currentDivision), "▣", "purple", "Divisi aktif")}
       ${stat("Role / Jabatan", esc(m.role || m.jabatan || "Anggota"), "✦", "green", "Posisi kepengurusan")}
       ${stat("Tab Panggilan", esc(namaPanggilan), "◷", "orange", "Referensi sheet")}
