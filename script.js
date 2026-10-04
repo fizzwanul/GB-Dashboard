@@ -140,8 +140,17 @@ function taskRow(t) {
   const picTugas = t.pIC || t.penanggungJawab || t.pj || "—";
   const linkBukti = t.linkBuktiUtama || t.bukti || t.linkBukti || "";
   const hasBukti = Boolean(linkBukti);
-  const progresNum = Number(t.progres || 0);
   
+  // FIX PERSENTASE: Mengubah format desimal Google Sheets jadi persentase normal
+  let rawProgres = Number(t.progres || t.Progres || t['%Progres'] || 0);
+  const progresNum = (rawProgres > 0 && rawProgres <= 1) ? Math.round(rawProgres * 100) : rawProgres;
+  
+  // Rapikan format tanggal kalau dari Google Sheets bentuknya aneh
+  let tenggatTampil = t.tenggat || t.tenggatWaktu || "—";
+  if (String(tenggatTampil).includes('T')) {
+    tenggatTampil = tenggatTampil.split('T')[0];
+  }
+
   return `
     <tr>
       <td><strong>${esc(prokerId)}</strong></td>
@@ -155,10 +164,10 @@ function taskRow(t) {
           ${progresNum}%
         </div>
       </td>
-      <td>${esc(t.tenggat || t.tenggatWaktu || "—")}</td>
+      <td>${esc(tenggatTampil)}</td>
       <td>${renderEvidenceLinks(linkBukti)}</td>
       <td>${esc(t.catatan || "—")}</td>
-      <td><button class="mini-btn" onclick="openUploadModal('${esc(prokerId)}', '${progresNum}', '${esc(t.status)}')">${hasBukti ? "Edit Bukti" : "+ Tambah Bukti"}</button></td>
+      <td><button class="mini-btn" onclick="openUploadModal('${esc(prokerId)}')">${hasBukti ? "Edit Bukti" : "+ Tambah Bukti"}</button></td>
     </tr>
   `;
 }
@@ -299,7 +308,6 @@ function memberDetailPage() {
 
 // === 6. MODAL UPLOAD LINK & TAMBAH PROKER ===
 function openUploadModal(idProker) {
-  // Ambil data task berdasarkan ID langsung dari globalData agar akurat
   const task = globalData.tasks.find(t => String(t.iDProker || t.idProker || t.id) === String(idProker));
   if (!task) {
     toast("ID Proker tidak ditemukan!");
@@ -309,15 +317,20 @@ function openUploadModal(idProker) {
   $("#formProkerId").value = idProker;
   $("#modalProkerTitle").textContent = `Update: ${task.namaProgramKerja || task.namaProker || idProker}`;
   
-  // Konversi nilai desimal ke persen untuk input
-  const currentProg = Number(task.progres !== undefined ? task.progres : 0);
-  $("#formProgres").value = currentProg <= 1 ? Math.round(currentProg * 100) : currentProg;
+  // Konversi progres untuk input form
+  let rawProgres = Number(task.progres || task.Progres || task['%Progres'] || 0);
+  $("#formProgres").value = (rawProgres > 0 && rawProgres <= 1) ? Math.round(rawProgres * 100) : rawProgres;
   
   $("#formStatus").value = task.status || "Belum Mulai";
   $("#formPic").value = task.pIC || task.penanggungJawab || task.pj || "";
   $("#formCatatan").value = task.catatan || "";
   $("#formExistingLink").value = task.linkBuktiUtama || task.bukti || task.linkBukti || "";
-  $("#formNewLink").value = ""; // Kosongkan input link baru
+  $("#formNewLink").value = ""; 
+
+  // Ambil tanggal untuk ditaruh di type="date"
+  let tgl = task.tenggat || task.tenggatWaktu || "";
+  if (String(tgl).includes('T')) tgl = String(tgl).split('T')[0];
+  $("#formTenggat").value = tgl;
   
   $("#uploadModal")?.showModal();
 }
@@ -333,7 +346,8 @@ async function handleSaveProker(e) {
     pic: $("#formPic").value.trim(),
     catatan: $("#formCatatan").value.trim(),
     existingEvidence: $("#formExistingLink").value,
-    newLink: $("#formNewLink").value.trim()
+    newLink: $("#formNewLink").value.trim(),
+    tenggat: $("#formTenggat").value // Menangkap inputan tanggal
   };
 
   toast("Menyimpan data ke Google Sheets...");
