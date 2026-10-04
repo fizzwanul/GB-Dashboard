@@ -372,6 +372,11 @@ async function sendPostPayload(payload) {
     if (res.status === "success") {
       toast("Berhasil disimpan!");
       $("#uploadModal")?.close();
+      
+      // PENTING: Hapus cache ingatan lama agar layar langsung mengambil data baru!
+      sessionStorage.removeItem(`genbi_cache_${currentDivision}`);
+      
+      // Tarik ulang data ke layar
       fetchDivisionData();
     } else {
       toast("Gagal: " + res.message);
