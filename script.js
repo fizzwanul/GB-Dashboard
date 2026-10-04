@@ -334,6 +334,20 @@ function openUploadModal(idProker) {
   $("#uploadModal")?.showModal();
 }
 
+function handleAddProkerPrompt() {
+  const namaProker = prompt("Masukkan nama Program Kerja baru:");
+  if (!namaProker) return;
+  
+  const payload = {
+    action: "addProker",
+    division: currentDivision,
+    prokerData: { namaProker: namaProker.trim() }
+  };
+  
+  toast("Menyiapkan proker baru...");
+  sendPostPayload(payload);
+}
+
 async function handleSaveProker(e) {
   e.preventDefault();
   const payload = {
