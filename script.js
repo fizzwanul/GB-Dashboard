@@ -324,8 +324,7 @@ function openUploadModal(idProker) {
   $("#formStatus").value = task.status || "Belum Mulai";
   $("#formPic").value = task.pIC || task.penanggungJawab || task.pj || "";
   $("#formCatatan").value = task.catatan || "";
-  $("#formExistingLink").value = task.linkBuktiUtama || task.bukti || task.linkBukti || "";
-  $("#formNewLink").value = ""; 
+  $("#formLinkBukti").value = task.linkBuktiUtama || task.bukti || task.linkBukti || "";
 
   // Ambil tanggal untuk ditaruh di type="date"
   let tgl = task.tenggat || task.tenggatWaktu || "";
@@ -339,15 +338,14 @@ async function handleSaveProker(e) {
   e.preventDefault();
   const payload = {
     action: "uploadEvidence",
-    division: currentDivision,
-    idProker: $("#formProkerId").value,
-    progres: Number($("#formProgres").value),
-    status: $("#formStatus").value,
-    pic: $("#formPic").value.trim(),
-    catatan: $("#formCatatan").value.trim(),
-    existingEvidence: $("#formExistingLink").value,
-    newLink: $("#formNewLink").value.trim(),
-    tenggat: $("#formTenggat").value // Menangkap inputan tanggal
+   division: currentDivision,
+   idProker: $("#formProkerId").value,
+   progres: Number($("#formProgres").value),
+   status: $("#formStatus").value,
+   pic: $("#formPic").value.trim(),
+   catatan: $("#formCatatan").value.trim(),
+   tenggat: $("#formTenggat").value,
+   linkBukti: $("#formLinkBukti").value.trim() // Cukup kirim 1 data link ini saja
   };
 
   toast("Menyimpan data ke Google Sheets...");
