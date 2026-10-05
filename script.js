@@ -3,28 +3,97 @@ const $ = (s, root = document) => root.querySelector(s); const $$ = (s, root = d
 const API_URL = "https://script.google.com/macros/s/AKfycbxYpvxxkElZVostCLGLV51N_kU1ZsEDf1Th6Ax3FvApkTCvgg7mlvDiFF4IFJDBREyu/exec";
 
 let currentDivision = "pendidikan";
-let currentUser = null;
-let globalData = { members: [], tasks: [], dashboard: [] };
-let currentPage = "overview";
+let currentUser = null; // null = guest (belum login)
+let globalData = { members: [], tasks: [], dashboard: [], allMembers: [] };
+let currentPage = "members";
 let isFetching = false;
 let selectedMemberId = null;
+let memberQuery = "";
 
-// === 1. BYPASS AUTENTIKASI (AKSES DEFAULT ADMIN) ===
+const DIVISION_LABELS = {
+  inti: "Pengurus Inti",
+  pendidikan: "Pendidikan",
+  pubsos: "Publikasi & Sosialisasi",
+  pengabdian: "Pengabdian Masyarakat",
+  kewirausahaan: "Kewirausahaan",
+  lingkungan: "Lingkungan Hidup"
+};
+const isGuest = () => !currentUser;
+
+// === 1. INISIALISASI: DEFAULT GUEST ===
+// TODO (Tahap 2): hapus bypass #dev dan ganti dengan login Google.
 async function initApp() {
-  currentUser = {
-    nama: "Admin Tester",
-    email: "admin@genbi",
-    role: "Admin",
-    divisionKey: "pendidikan"
-  };
+  if (location.hash === "#dev") {
+    currentUser = {
+      nama: "Admin Tester",
+      email: "admin@genbi",
+      role: "Admin",
+      divisionKey: "pendidikan"
+    };
+    currentPage = "overview";
+  } else {
+    currentUser = null;
+    currentPage = "members";
+  }
   applyRolePermissions();
-  await fetchDivisionData();
+  if (isGuest()) await fetchAllMembers();
+  else await fetchDivisionData();
 }
 
 function applyRolePermissions() {
+  const guest = isGuest();
   const select = $("#divisionSelect");
-  if (!select) return;
-  select.disabled = false;
+  if (select) {
+    select.disabled = false;
+    select.style.display = guest ? "none" : "";
+  }
+  // Guest hanya melihat menu pencarian anggota
+  $$(".nav-item").forEach(b => {
+    const page = b.dataset.page;
+    b.style.display = guest && page !== "members" ? "none" : "";
+  });
+  const membersNav = $('.nav-item[data-page="members"]');
+  if (membersNav) membersNav.lastChild.textContent = guest ? " Cari Anggota" : " Monitoring Anggota";
+
+  const loginBtn = $("#loginBtn");
+  if (loginBtn) loginBtn.style.display = guest ? "" : "none";
+  const userBadge = $("#userBadge");
+  if (userBadge) {
+    userBadge.style.display = guest ? "none" : "";
+    userBadge.textContent = guest ? "" : `${currentUser.nama} · ${currentUser.role}`;
+  }
+}
+
+// === 1b. FETCH DAFTAR ANGGOTA SEMUA DIVISI (MODE GUEST) ===
+async function fetchAllMembers() {
+  const cacheKey = "genbi_cache_all_members";
+  let cachedData = null;
+  try { cachedData = sessionStorage.getItem(cacheKey); } catch (e) {}
+
+  if (cachedData) {
+    try {
+      globalData.allMembers = JSON.parse(cachedData);
+      render();
+    } catch (e) { cachedData = null; }
+  }
+  if (!cachedData) {
+    $("#content").innerHTML = `<div style="text-align:center; padding:50px;"><strong>Memuat daftar anggota...</strong></div>`;
+  }
+
+  try {
+    const res = await fetch(`${API_URL}?action=getAllMembers`).then(r => r.json());
+    const fresh = res.data || [];
+    if (!cachedData || JSON.stringify(fresh) !== JSON.stringify(globalData.allMembers)) {
+      globalData.allMembers = fresh;
+      try { sessionStorage.setItem(cacheKey, JSON.stringify(fresh)); } catch (e) {}
+      // Jangan render ulang kalau user sedang mengetik di kolom cari
+      if (document.activeElement?.id !== "memberSearch") render();
+    }
+  } catch (e) {
+    if (!cachedData) {
+      $("#content").innerHTML = `<div style="text-align:center; padding:50px;"><strong>Gagal memuat data. Periksa koneksi lalu muat ulang halaman.</strong></div>`;
+    }
+  }
 }
 
 // === 2. FETCH DATA DIVISI ===
@@ -206,30 +275,74 @@ function tasksPage() {
 // === 5. HALAMAN ANGGOTA & DETAIL PROFIL (DENGAN TRACKER TAB) ===
 // Backend mengubah header "ID Anggota" menjadi key "iDAnggota", jadi cek beberapa kemungkinan.
 // Kalau kolom ID kosong, pakai nama lengkap agar tombol Detail tetap berfungsi.
+// Untuk daftar lintas divisi (guest), awalan divisionKey menjaga ID tetap unik.
 function getMemberId(m) {
-  return String(m.iDAnggota || m.idAnggota || m.IDAnggota || m.id || m.namaLengkap || m.nama || "").trim();
+  const base = String(m.iDAnggota || m.idAnggota || m.IDAnggota || m.id || m.namaLengkap || m.nama || "").trim();
+  return (m.divisionKey ? m.divisionKey + "|" : "") + base;
+}
+
+function getMemberDivisionKey(m) {
+  return m.divisionKey || currentDivision;
+}
+
+function currentMemberList() {
+  return isGuest() ? (globalData.allMembers || []) : (globalData.members || []);
+}
+
+function filterMembers(list, query) {
+  const named = list.filter(m => m.namaLengkap || m.nama);
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return named;
+  return named.filter(m => [
+    m.namaLengkap, m.nama, m.namaPanggilan, m.panggilan,
+    m.divisi, DIVISION_LABELS[getMemberDivisionKey(m)], m.role, m.iDAnggota
+  ].some(v => String(v || "").toLowerCase().includes(q)));
 }
 
 function memberRow(m) {
   const id = getMemberId(m);
   const idTampil = m.iDAnggota || m.idAnggota || m.IDAnggota || m.id || "—";
+  const divTampil = m.divisi || DIVISION_LABELS[getMemberDivisionKey(m)] || getMemberDivisionKey(m);
   return `
     <tr>
       <td><strong>${esc(idTampil)}</strong></td>
       <td><strong>${esc(m.namaLengkap || m.nama || "—")}</strong></td>
-      <td>${esc(m.divisi || currentDivision)}</td>
+      <td>${esc(divTampil)}</td>
       <td><button class="mini-btn" data-member-detail="${esc(id)}">Detail</button></td>
     </tr>
   `;
 }
 
+function memberRows(list) {
+  const filtered = filterMembers(list, memberQuery);
+  if (filtered.length === 0) {
+    const msg = memberQuery ? `Tidak ada anggota yang cocok dengan "${esc(memberQuery)}".` : "Belum ada anggota.";
+    return `<tr><td colspan="4" class="empty-cell">${msg}</td></tr>`;
+  }
+  return filtered.map(memberRow).join("");
+}
+
+// Hanya isi tabel yang diganti agar kolom cari tidak kehilangan fokus saat mengetik
+function onMemberSearch(value) {
+  memberQuery = value;
+  const tbody = $("#memberTableBody");
+  if (tbody) tbody.innerHTML = memberRows(currentMemberList());
+}
+
 function membersPage() {
-  const members = globalData.members || [];
-  const rows = members.map(memberRow).join("");
+  const guest = isGuest();
+  const members = currentMemberList();
 
   return `
-    ${head("DATA & MONITORING", "Monitoring Anggota", "Cari anggota dan buka profil detail.")}
+    ${head(
+      guest ? "PROFIL ANGGOTA" : "DATA & MONITORING",
+      guest ? "Cari Anggota" : "Monitoring Anggota",
+      guest ? "Cari anggota GenBI dari semua divisi dan buka profilnya." : "Cari anggota dan buka profil detail."
+    )}
     <section class="panel">
+      <div class="toolbar">
+        <input id="memberSearch" type="search" placeholder="Cari nama, panggilan, divisi, atau role..." value="${esc(memberQuery)}" oninput="onMemberSearch(this.value)" autocomplete="off">
+      </div>
       <div class="table-wrap">
         <table>
           <thead>
@@ -240,7 +353,7 @@ function membersPage() {
               <th>Aksi</th>
             </tr>
           </thead>
-          <tbody>${rows || '<tr><td colspan="4" class="empty-cell">Belum ada anggota.</td></tr>'}</tbody>
+          <tbody id="memberTableBody">${memberRows(members)}</tbody>
         </table>
       </div>
     </section>
@@ -248,16 +361,16 @@ function membersPage() {
 }
 
 function memberDetailPage() {
-  const members = globalData.members || [];
-  const m = members.find(x => getMemberId(x) === String(selectedMemberId));
+  const m = currentMemberList().find(x => getMemberId(x) === String(selectedMemberId));
   
   if (!m) return membersPage();
 
+  const divKey = getMemberDivisionKey(m);
   const backBtn = `<button class="btn btn-light" data-page="members">← Kembali ke daftar</button>`;
-  const namaPanggilan = m.panggilan || m.namaPanggilan || m.namaLengkap.split(' ')[0];
+  const namaPanggilan = m.panggilan || m.namaPanggilan || String(m.namaLengkap || m.nama || "").split(' ')[0];
   
   // Ambil data tracker dari tab perorangan di Google Sheets
-  fetch(`${API_URL}?action=getTracker&division=${currentDivision}&nickname=${namaPanggilan}`)
+  fetch(`${API_URL}?action=getTracker&division=${encodeURIComponent(divKey)}&nickname=${encodeURIComponent(namaPanggilan)}`)
     .then(r => r.json())
     .then(res => {
       const tbody = $("#trackerTableBody");
@@ -275,8 +388,12 @@ function memberDetailPage() {
           </tr>
         `).join("");
       } else {
-        tbody.innerHTML = `<tr><td colspan="2" class="empty-cell">Belum ada riwayat / Tab '${namaPanggilan}' tidak ditemukan.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="2" class="empty-cell">Belum ada riwayat / Tab '${esc(namaPanggilan)}' tidak ditemukan.</td></tr>`;
       }
+    })
+    .catch(() => {
+      const tbody = $("#trackerTableBody");
+      if (tbody) tbody.innerHTML = `<tr><td colspan="2" class="empty-cell">Gagal memuat riwayat. Periksa koneksi.</td></tr>`;
     });
 
   return `
@@ -284,7 +401,7 @@ function memberDetailPage() {
     
     <div class="stats-grid">
       ${stat("Nama Anggota", esc(m.namaLengkap || m.nama), "♙", "blue", esc(m.iDAnggota || m.idAnggota || m.id || "—"))}
-      ${stat("Divisi", esc(m.divisi || currentDivision), "▣", "purple", "Divisi aktif")}
+      ${stat("Divisi", esc(m.divisi || DIVISION_LABELS[divKey] || divKey), "▣", "purple", "Divisi aktif")}
       ${stat("Role / Jabatan", esc(m.role || m.jabatan || "Anggota"), "✦", "green", "Posisi kepengurusan")}
       ${stat("Tab Panggilan", esc(namaPanggilan), "◷", "orange", "Referensi sheet")}
     </div>
@@ -402,6 +519,8 @@ const pageRender = {
 };
 
 function render() {
+  // Guest hanya boleh melihat pencarian anggota & profil
+  if (isGuest() && !["members", "member-detail"].includes(currentPage)) currentPage = "members";
   const fn = pageRender[currentPage] || overview;
   $("#content").innerHTML = fn();   $$(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.page === (currentPage === "member-detail" ? "members" : currentPage)));
   window.scrollTo({ top: 0, behavior: "smooth" });
