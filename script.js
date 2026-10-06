@@ -570,6 +570,12 @@ function handleAddProkerPrompt() {
 
 async function handleSaveProker(e) {
   e.preventDefault();
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Menyimpan...";
+  }
+
   const payload = {
     action: "uploadEvidence",
    division: currentDivision,
@@ -579,11 +585,16 @@ async function handleSaveProker(e) {
    pic: $("#formPic").value.trim(),
    catatan: $("#formCatatan").value.trim(),
    tenggat: $("#formTenggat").value,
-   linkBukti: $("#formLinkBukti").value.trim() // Cukup kirim 1 data link ini saja
+   linkBukti: $("#formLinkBukti").value.trim()
   };
 
   toast("Menyimpan data ke Google Sheets...");
   await sendPostPayload(payload);
+
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Simpan Perubahan";
+  }
 }
 
 async function sendPostPayload(payload) {
@@ -594,10 +605,7 @@ async function sendPostPayload(payload) {
       toast(res.message || "Berhasil disimpan!");
       $("#uploadModal")?.close();
       
-      // PENTING: Hapus cache ingatan lama agar layar langsung mengambil data baru!
-      sessionStorage.removeItem(`genbi_cache_${currentDivision}`);
-      
-      // Tarik ulang data ke layar
+      // Background sync: tarik data baru tanpa menghapus layar (menghindari flicker)
       fetchDivisionData();
     } else {
       toast("Gagal: " + res.message);
@@ -654,27 +662,37 @@ document.addEventListener("change", (e) => {
   }
 });
 
-$("#menuBtn").onclick = () => $("#sidebar")?.classList.toggle("open");
+$("#menuBtn").onclick = () => $("#sidebar")?.classList.add("open");
+if ($("#closeSidebarBtn")) {
+  $("#closeSidebarBtn").onclick = () => $("#sidebar")?.classList.remove("open");
+}
 
 // Swipe Gestures for Mobile Sidebar
 let touchStartX = 0;
+let touchStartY = 0;
 document.addEventListener('touchstart', e => {
   touchStartX = e.changedTouches[0].screenX;
+  touchStartY = e.changedTouches[0].screenY;
 }, {passive: true});
 
 document.addEventListener('touchend', e => {
   const touchEndX = e.changedTouches[0].screenX;
-  const swipeDist = touchEndX - touchStartX;
+  const touchEndY = e.changedTouches[0].screenY;
+  const swipeDistX = touchEndX - touchStartX;
+  const swipeDistY = Math.abs(touchEndY - touchStartY);
   const sidebar = $("#sidebar");
   if (!sidebar) return;
   
-  // Usap ke kanan untuk membuka (jika mulai dari pinggir kiri)
-  if (swipeDist > 50 && touchStartX < 30) {
-    sidebar.classList.add("open");
-  }
-  // Usap ke kiri untuk menutup
-  if (swipeDist < -50 && sidebar.classList.contains("open")) {
-    sidebar.classList.remove("open");
+  // Pastikan swipe lebih horizontal daripada vertikal (mencegah scroll vertikal memicu sidebar)
+  if (Math.abs(swipeDistX) > swipeDistY) {
+    // Usap ke kanan untuk membuka (jika mulai dari pinggir kiri)
+    if (swipeDistX > 50 && touchStartX < 30) {
+      sidebar.classList.add("open");
+    }
+    // Usap ke kiri untuk menutup
+    if (swipeDistX < -50 && sidebar.classList.contains("open")) {
+      sidebar.classList.remove("open");
+    }
   }
 }, {passive: true});
 

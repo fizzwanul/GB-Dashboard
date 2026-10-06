@@ -20,3 +20,21 @@
   object-fit: contain;
 }
 .version-badge{display:inline-block;vertical-align:middle;margin-left:7px;padding:3px 6px;border:1px solid #6e86a6;border-radius:5px;font-size:10px;letter-spacing:.4px;color:#cbd8eb;font-weight:700}
+
+.mobile-close-btn { display: none; }
+@media (max-width: 760px) {
+  .mobile-close-btn {
+    display: block;
+    position: absolute;
+    top: 20px;
+    right: 15px;
+    background: none;
+    border: none;
+    color: #9eb0ca;
+    font-size: 20px;
+    cursor: pointer;
+    z-index: 30;
+    padding: 5px;
+  }
+  .mobile-close-btn:hover { color: white; }
+}
