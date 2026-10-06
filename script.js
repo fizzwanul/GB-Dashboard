@@ -96,6 +96,11 @@ async function handleCredentialResponse(response) {
       
       render();
       await fetchDivisionData();
+    } else if (res.status === "debug_error") {
+      const dbg = `DIAGNOSTIC LOGIN GAGAL:\n\nHTTP Code: ${res.httpCode}\nValid Audience: ${res.validAud}\nValid Issuer: ${res.validIss}\nValid Expiry: ${res.validExp}\nEmail Verified: ${res.emailVerified}\nHas Email: ${res.hasEmail}\nHas Sub: ${res.hasSub}`;
+      alert(dbg);
+      toast("Login ditolak. Lihat alert diagnostik.");
+      google.accounts.id.revoke(token, () => {});
     } else {
       toast(res.message || "Gagal login.");
       google.accounts.id.revoke(token, () => {});
