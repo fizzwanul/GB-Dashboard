@@ -1,12 +1,15 @@
 const $ = (s, root = document) => root.querySelector(s); const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
 const API_URL = "https://script.google.com/macros/s/AKfycbxYpvxxkElZVostCLGLV51N_kU1ZsEDf1Th6Ax3FvApkTCvgg7mlvDiFF4IFJDBREyu/exec";
+const GOOGLE_CLIENT_ID = "913208175994-26v5bqfrqftd4ijpg6an1ihisnqmeu1a.apps.googleusercontent.com";
 
 let currentDivision = "pendidikan";
 let currentUser = null; // null = guest (belum login)
+let idToken = null;
 let globalData = { members: [], tasks: [], dashboard: [], allMembers: [] };
 let currentPage = "members";
 let isFetching = false;
+let currentFetchDivision = null; // Untuk mencegah race condition
 let selectedMemberId = null;
 let memberQuery = "";
 
@@ -20,24 +23,98 @@ const DIVISION_LABELS = {
 };
 const isGuest = () => !currentUser;
 
-// === 1. INISIALISASI: DEFAULT GUEST ===
-// TODO (Tahap 2): hapus bypass #dev dan ganti dengan login Google.
+// === 1. INISIALISASI: GOOGLE LOGIN ===
 async function initApp() {
-  if (location.hash === "#dev") {
-    currentUser = {
-      nama: "Admin Tester",
-      email: "admin@genbi",
-      role: "Admin",
-      divisionKey: "pendidikan"
-    };
-    currentPage = "overview";
+  const savedUser = sessionStorage.getItem("genbi_user");
+  const savedToken = sessionStorage.getItem("genbi_token");
+  
+  if (savedUser && savedToken) {
+    try {
+      currentUser = JSON.parse(savedUser);
+      idToken = savedToken;
+      currentDivision = currentUser.divisionKey || "pendidikan";
+      currentPage = "overview";
+    } catch(e) {
+      currentUser = null; idToken = null; currentPage = "members";
+    }
   } else {
-    currentUser = null;
-    currentPage = "members";
+    currentUser = null; idToken = null; currentPage = "members";
   }
+
   applyRolePermissions();
+  
+  if (window.google) initializeGoogleSignIn();
+  else window.addEventListener('load', initializeGoogleSignIn);
+
   if (isGuest()) await fetchAllMembers();
-  else await fetchDivisionData();
+  else {
+    render(); // Render dashboard state directly
+    await fetchDivisionData();
+  }
+}
+
+function initializeGoogleSignIn() {
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: handleCredentialResponse,
+    cancel_on_tap_outside: false
+  });
+  
+  if (isGuest()) {
+    const btnContainer = document.getElementById("googleLoginBtn");
+    if (btnContainer) {
+      btnContainer.innerHTML = "";
+      google.accounts.id.renderButton(btnContainer, { theme: "outline", size: "medium", shape: "pill" });
+    }
+  }
+}
+
+async function handleCredentialResponse(response) {
+  const token = response.credential;
+  toast("Memvalidasi login...");
+  
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      body: JSON.stringify({ action: "verifyLogin", idToken: token })
+    }).then(r => r.json());
+    
+    if (res.status === "success") {
+      currentUser = res.user;
+      idToken = token;
+      currentDivision = currentUser.divisionKey || "pendidikan";
+      currentPage = "overview";
+      
+      sessionStorage.setItem("genbi_user", JSON.stringify(currentUser));
+      sessionStorage.setItem("genbi_token", token);
+      
+      toast(`Selamat datang, ${currentUser.nama}!`);
+      applyRolePermissions();
+      
+      const btnContainer = document.getElementById("googleLoginBtn");
+      if (btnContainer) btnContainer.style.display = "none";
+      
+      render();
+      await fetchDivisionData();
+    } else {
+      toast(res.message || "Gagal login.");
+      google.accounts.id.revoke(token, () => {});
+    }
+  } catch (e) {
+    toast("Kesalahan jaringan saat validasi login.");
+  }
+}
+
+function handleLogout() {
+  if (idToken && window.google) google.accounts.id.revoke(idToken, () => {});
+  sessionStorage.removeItem("genbi_user");
+  sessionStorage.removeItem("genbi_token");
+  currentUser = null; idToken = null; currentPage = "members";
+  toast("Anda telah keluar.");
+  applyRolePermissions();
+  render();
+  fetchAllMembers();
+  setTimeout(() => initializeGoogleSignIn(), 100);
 }
 
 function applyRolePermissions() {
@@ -46,8 +123,9 @@ function applyRolePermissions() {
   if (select) {
     select.disabled = false;
     select.style.display = guest ? "none" : "";
+    if (!guest && currentUser && currentUser.divisionKey) select.value = currentDivision;
   }
-  // Guest hanya melihat menu pencarian anggota
+  
   $$(".nav-item").forEach(b => {
     const page = b.dataset.page;
     b.style.display = guest && page !== "members" ? "none" : "";
@@ -55,12 +133,18 @@ function applyRolePermissions() {
   const membersNav = $('.nav-item[data-page="members"]');
   if (membersNav) membersNav.lastChild.textContent = guest ? " Cari Anggota" : " Monitoring Anggota";
 
+  const googleBtn = $("#googleLoginBtn");
+  if (googleBtn) googleBtn.style.display = guest ? "block" : "none";
   const loginBtn = $("#loginBtn");
-  if (loginBtn) loginBtn.style.display = guest ? "" : "none";
-  const userBadge = $("#userBadge");
-  if (userBadge) {
-    userBadge.style.display = guest ? "none" : "";
-    userBadge.textContent = guest ? "" : `${currentUser.nama} · ${currentUser.role}`;
+  if (loginBtn) loginBtn.style.display = "none"; // Hide fallback button entirely
+  
+  const userProfile = $("#userProfile");
+  if (userProfile) {
+    userProfile.style.display = guest ? "none" : "flex";
+    const userBadge = $("#userBadge");
+    if (userBadge && !guest) {
+      userBadge.textContent = `${currentUser.nama} · ${currentUser.role}`;
+    }
   }
 }
 
@@ -98,57 +182,64 @@ async function fetchAllMembers() {
 
 // === 2. FETCH DATA DIVISI ===
 async function fetchDivisionData() {
-  const cacheKey = `genbi_cache_${currentDivision}`;
+  const targetDivision = currentDivision; // Capture divisi saat ini untuk memblokir race condition
+  currentFetchDivision = targetDivision;
+
+  const cacheKey = `genbi_cache_${targetDivision}`;
   const cachedData = sessionStorage.getItem(cacheKey);
 
   if (cachedData) {
     try {
-      // 1. Tampilkan data dari cache secara INSTAN (0 detik loading)
       const parsed = JSON.parse(cachedData);
       globalData.members = parsed.members;
       globalData.tasks = parsed.tasks;
-      render(); // Halaman langsung muncul tanpa teks "Memuat..."
+      if (currentFetchDivision === targetDivision) render();
     } catch (e) {}
   } else {
-    // Kalau belum ada cache sama sekali, tampilkan teks loading standar
     if (!isFetching) {
-      $("#content").innerHTML = `<div style="text-align:center; padding:50px;"><strong>Memuat Data Google Sheets (${currentDivision.toUpperCase()})...</strong></div>`;
+      $("#content").innerHTML = `<div style="text-align:center; padding:50px;"><strong>Memuat Data Google Sheets (${targetDivision.toUpperCase()})...</strong></div>`;
     }
   }
 
-  // 2. Tarik data terbaru dari Google Sheets di BALIK LAYAR (Background Sync)
   if (isFetching) return;
   isFetching = true;
 
   try {
     const [membersRes, kpiRes] = await Promise.all([
-      fetch(`${API_URL}?action=getMembers&division=${currentDivision}`).then(r => r.json()),
-      fetch(`${API_URL}?action=getKPI&division=${currentDivision}`).then(r => r.json())
+      fetch(`${API_URL}?action=getMembers&division=${targetDivision}`).then(r => r.json()),
+      fetch(`${API_URL}?action=getKPI&division=${targetDivision}`).then(r => r.json())
     ]);
 
     const freshMembers = membersRes.data || [];
     const freshTasks = kpiRes.data || [];
 
-    // Bandingkan apakah ada perubahan data
-    const hasChanged = JSON.stringify(freshTasks) !== JSON.stringify(globalData.tasks);
+    // Bandingkan apakah ada perubahan data (members ATAU tasks)
+    const membersChanged = JSON.stringify(freshMembers) !== JSON.stringify(globalData.members);
+    const tasksChanged = JSON.stringify(freshTasks) !== JSON.stringify(globalData.tasks);
+    const hasChanged = membersChanged || tasksChanged;
 
     if (hasChanged || !cachedData) {
-      globalData.members = freshMembers;
-      globalData.tasks = freshTasks;
+      // Pastikan user belum pindah divisi sebelum data selesai dimuat
+      if (currentFetchDivision === targetDivision) {
+        globalData.members = freshMembers;
+        globalData.tasks = freshTasks;
 
-      // Update cache dengan data terbaru
-      sessionStorage.setItem(cacheKey, JSON.stringify({
-        members: freshMembers,
-        tasks: freshTasks
-      }));
+        sessionStorage.setItem(cacheKey, JSON.stringify({
+          members: freshMembers,
+          tasks: freshTasks
+        }));
 
-      // Render ulang layar secara mulus jika ada perubahan data dari server
-      render();
+        render();
+      }
     }
   } catch (e) {
-    // Jika offline/gagal fetch, biarkan pakai data cache yang sudah ada
+    console.error("Gagal memuat data dari server:", e);
   } finally {
     isFetching = false;
+    // Jika ada request pindah divisi tertunda yang diblokir oleh isFetching
+    if (currentFetchDivision !== currentDivision) {
+      fetchDivisionData(); 
+    }
   }
 }
 
@@ -491,6 +582,7 @@ async function handleSaveProker(e) {
 }
 
 async function sendPostPayload(payload) {
+  if (idToken) payload.idToken = idToken;
   try {
     const res = await fetch(API_URL, { method: "POST", body: JSON.stringify(payload) }).then(r => r.json());
     if (res.status === "success") {
@@ -522,7 +614,8 @@ function render() {
   // Guest hanya boleh melihat pencarian anggota & profil
   if (isGuest() && !["members", "member-detail"].includes(currentPage)) currentPage = "members";
   const fn = pageRender[currentPage] || overview;
-  $("#content").innerHTML = fn();   $$(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.page === (currentPage === "member-detail" ? "members" : currentPage)));
+  $("#content").innerHTML = fn();   
+  $$(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.page === (currentPage === "member-detail" ? "members" : currentPage)));
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -541,6 +634,12 @@ document.addEventListener("click", e => {
     selectedMemberId = detailBtn.dataset.memberDetail;
     go("member-detail");
   }
+  
+  // Close sidebar on mobile when clicking outside
+  const sidebar = $("#sidebar");
+  if (sidebar && sidebar.classList.contains("open") && !e.target.closest("#sidebar") && !e.target.closest("#menuBtn")) {
+    sidebar.classList.remove("open");
+  }
 });
 
 document.addEventListener("change", (e) => {
@@ -551,6 +650,28 @@ document.addEventListener("change", (e) => {
 });
 
 $("#menuBtn").onclick = () => $("#sidebar")?.classList.toggle("open");
+
+// Swipe Gestures for Mobile Sidebar
+let touchStartX = 0;
+document.addEventListener('touchstart', e => {
+  touchStartX = e.changedTouches[0].screenX;
+}, {passive: true});
+
+document.addEventListener('touchend', e => {
+  const touchEndX = e.changedTouches[0].screenX;
+  const swipeDist = touchEndX - touchStartX;
+  const sidebar = $("#sidebar");
+  if (!sidebar) return;
+  
+  // Usap ke kanan untuk membuka (jika mulai dari pinggir kiri)
+  if (swipeDist > 50 && touchStartX < 30) {
+    sidebar.classList.add("open");
+  }
+  // Usap ke kiri untuk menutup
+  if (swipeDist < -50 && sidebar.classList.contains("open")) {
+    sidebar.classList.remove("open");
+  }
+}, {passive: true});
 
 // Jalankan Inisialisasi Utama
 initApp();
