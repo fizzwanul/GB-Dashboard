@@ -317,15 +317,15 @@ function overview() {
 
 function taskRow(t) {
   const prokerId = t.iDProker || t.idProker || t.IDProker || t.id || "";
-  const namaTugas = t.namaProgramKerja || t.namaProker || t.namaTugas || t.nama || "—";
-  const picTugas = t.pIC || t.penanggungJawab || t.pj || "—";
+  const namaTugas = t.namaProgramKerja || t.namaProker || t.namaTugas || t.nama || "-";
+  const picTugas = t.pIC || t.penanggungJawab || t.pj || "-";
   const linkBukti = t.linkBuktiUtama || t.bukti || t.linkBukti || "";
   const hasBukti = Boolean(linkBukti);
   
   let rawProgres = Number(t.progres || t.Progres || t['%Progres'] || 0);
   const progresNum = (rawProgres > 0 && rawProgres <= 1) ? Math.round(rawProgres * 100) : rawProgres;
   
-  let tenggatTampil = t.tenggat || t.tenggatWaktu || "—";
+  let tenggatTampil = t.tenggat || t.tenggatWaktu || "-";
   if (String(tenggatTampil).includes('T')) tenggatTampil = tenggatTampil.split('T')[0];
 
   const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
@@ -335,7 +335,7 @@ function taskRow(t) {
   
   const canManage = isAdmin || (isKoord && (isGlobalScope || currentUser.divisionKey === currentDivision));
 
-  let actionsHTML = "—";
+  let actionsHTML = "-";
   if (canManage) {
     actionsHTML = `
       <div style="display:flex;align-items:center;gap:4px">
@@ -360,7 +360,7 @@ function taskRow(t) {
       </td>
       <td>${esc(tenggatTampil)}</td>
       <td>${renderEvidenceLinks(linkBukti)}</td>
-      <td>${esc(t.catatan || "—")}</td>
+      <td>${esc(t.catatan || "-")}</td>
       <td>${actionsHTML}</td>
     </tr>
   `;
@@ -401,30 +401,7 @@ function tasksPage() {
           <tbody>${rows || '<tr><td colspan="10" class="empty-cell">Belum ada proker terdaftar.</td></tr>'}</tbody>
         </table>
       </div>
-    </section>
-  `;
-}
-    <section class="panel">
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Nama Tugas</th>
-              <th>Divisi</th>
-              <th>Penanggung Jawab</th>
-              <th>Status</th>
-              <th>Progres</th>
-              <th>Tenggat</th>
-              <th>Bukti</th>
-              <th>Catatan</th>
-              <th>Aksi</th>
-            </tr>
-          </thead>
-          <tbody>${rows || '<tr><td colspan="10" class="empty-cell">Belum ada proker terdaftar.</td></tr>'}</tbody>
-        </table>
-      </div>
-    </section>
+      </section>
   `;
 }
 
@@ -485,6 +462,7 @@ function onMemberSearch(value) {
   if (tbody) tbody.innerHTML = memberRows(currentMemberList());
 }
 
+
 function membersPage() {
   const guest = isGuest();
   const members = currentMemberList();
@@ -533,7 +511,7 @@ function memberDetailPage() {
   const canManageTracker = isAdmin || isAudit || (isKoord && currentUser.divisionKey === divKey);
 
   // Ambil data tracker dari tab perorangan di Google Sheets
-  fetch(`${API_URL}?action=getTracker&division=${encodeURIComponent(divKey)}&nickname=${encodeURIComponent(namaPanggilan)}${idToken ? '&idToken=' + idToken : '''}`)
+  fetch(`${API_URL}?action=getTracker&division=${encodeURIComponent(divKey)}&nickname=${encodeURIComponent(namaPanggilan)}${idToken ? '&idToken=' + idToken : ''}`)
     .then(r => r.json())
     .then(res => {
       const tbody = $("#trackerTableBody");
@@ -548,7 +526,7 @@ function memberDetailPage() {
           if (t.tanggal instanceof Date) dateStr = t.tanggal.toLocaleDateString('id-ID');
           else if (String(t.tanggal).includes('T')) dateStr = t.tanggal.split('T')[0];
           
-          let actionBtns = "—";
+          let actionBtns = "-";
           if (canManageTracker && t.rowId) {
             actionBtns = `
               <div style="display:flex;gap:4px">
@@ -614,7 +592,8 @@ function memberDetailPage() {
           </tbody>
         </table>
       </div>
-    </section>
+      ${addTrackerBtnHTML}
+      </section>
   `;
 }
 
@@ -848,10 +827,10 @@ function openTrackerModal(action, divKey, nickname, rowId = null, dataIdx = null
   if (action === "edit" && window.currentTrackerData && window.currentTrackerData[dataIdx]) {
     const t = window.currentTrackerData[dataIdx];
     let dateStr = t.tanggal;
-    if (t.tanggal instanceof Date) dateStr = t.tanggal.toISOString().split(''T'')[0];
-    else if (String(t.tanggal).includes(''T'')) dateStr = t.tanggal.split(''T'')[0];
+    if (t.tanggal instanceof Date) dateStr = t.tanggal.toISOString().split('T')[0];
+    else if (String(t.tanggal).includes('T')) dateStr = t.tanggal.split('T')[0];
     else {
-      try { dateStr = new Date(t.tanggal).toISOString().split(''T'')[0]; } catch(e) { dateStr = ""; }
+      try { dateStr = new Date(t.tanggal).toISOString().split('T')[0]; } catch(e) { dateStr = ""; }
     }
     
     $("#formTrackerTanggal").value = dateStr;
@@ -860,7 +839,7 @@ function openTrackerModal(action, divKey, nickname, rowId = null, dataIdx = null
     $("#formTrackerCatatan").value = t.catatan || "";
   } else {
     const tzOffset = new Date().getTimezoneOffset() * 60000;
-    const localDate = new Date(Date.now() - tzOffset).toISOString().split(''T'')[0];
+    const localDate = new Date(Date.now() - tzOffset).toISOString().split('T')[0];
     $("#formTrackerTanggal").value = localDate;
     $("#formTrackerKegiatan").value = "";
     $("#formTrackerPoin").value = "";
@@ -909,3 +888,18 @@ function deleteTrackerRow(divKey, nickname, rowId) {
     if (currentPage === "member-detail") go("member-detail");
   }).catch(() => {});
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
