@@ -317,24 +317,37 @@ function overview() {
 
 function taskRow(t) {
   const prokerId = t.iDProker || t.idProker || t.IDProker || t.id || "";
-  const namaTugas = t.namaProgramKerja || t.namaProker || t.namaTugas || t.nama || "‚Äî";
-  const picTugas = t.pIC || t.penanggungJawab || t.pj || "‚Äî";
+  const namaTugas = t.namaProgramKerja || t.namaProker || t.namaTugas || t.nama || "ó";
+  const picTugas = t.pIC || t.penanggungJawab || t.pj || "ó";
   const linkBukti = t.linkBuktiUtama || t.bukti || t.linkBukti || "";
   const hasBukti = Boolean(linkBukti);
   
-  // FIX PERSENTASE: Mengubah format desimal Google Sheets jadi persentase normal
   let rawProgres = Number(t.progres || t.Progres || t['%Progres'] || 0);
   const progresNum = (rawProgres > 0 && rawProgres <= 1) ? Math.round(rawProgres * 100) : rawProgres;
   
-  // Rapikan format tanggal kalau dari Google Sheets bentuknya aneh
-  let tenggatTampil = t.tenggat || t.tenggatWaktu || "‚Äî";
-  if (String(tenggatTampil).includes('T')) {
-    tenggatTampil = tenggatTampil.split('T')[0];
+  let tenggatTampil = t.tenggat || t.tenggatWaktu || "ó";
+  if (String(tenggatTampil).includes('T')) tenggatTampil = tenggatTampil.split('T')[0];
+
+  const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
+  const isAdmin = roleLower.includes("admin");
+  const isKoord = roleLower.includes("koordinator") || roleLower.includes("kord");
+  const isGlobalScope = t.scope === "global";
+  
+  const canManage = isAdmin || (isKoord && (isGlobalScope || currentUser.divisionKey === currentDivision));
+
+  let actionsHTML = "ó";
+  if (canManage) {
+    actionsHTML = `
+      <div style="display:flex;align-items:center;gap:4px">
+        <button class="mini-btn" onclick="openUploadModal('${esc(prokerId)}')">${hasBukti ? "Edit Bukti" : "+ Tambah Bukti"}</button>
+        <button class="mini-btn" style="background:#fce8e8;color:#d32f2f;" onclick="handleDeleteProker('${esc(prokerId)}', '${isGlobalScope ? 'global' : 'divisi'}')">Hapus</button>
+      </div>
+    `;
   }
 
   return `
     <tr>
-      <td><strong>${esc(prokerId)}</strong></td>
+      <td><strong>${esc(prokerId)}</strong>${isGlobalScope ? ' <span class="badge badge-purple" style="font-size:0.7em">Global</span>' : ''}</td>
       <td>${esc(namaTugas)}</td>
       <td>${esc(t.divisi || currentDivision)}</td>
       <td>${esc(picTugas)}</td>
@@ -347,8 +360,8 @@ function taskRow(t) {
       </td>
       <td>${esc(tenggatTampil)}</td>
       <td>${renderEvidenceLinks(linkBukti)}</td>
-      <td>${esc(t.catatan || "‚Äî")}</td>
-      <td><button class="mini-btn" onclick="openUploadModal('${esc(prokerId)}')">${hasBukti ? "Edit Bukti" : "+ Tambah Bukti"}</button></td>
+      <td>${esc(t.catatan || "ó")}</td>
+      <td>${actionsHTML}</td>
     </tr>
   `;
 }
@@ -356,10 +369,41 @@ function taskRow(t) {
 function tasksPage() {
   const tasks = globalData.tasks || [];
   const rows = tasks.map(taskRow).join("");
-  const addBtn = `<button class="btn btn-primary" onclick="handleAddProkerPrompt()">Ôºã Tambah Proker Baru</button>`;
+  
+  const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
+  const isAdmin = roleLower.includes("admin");
+  const isKoord = roleLower.includes("koordinator") || roleLower.includes("kord");
+  
+  let addBtn = "";
+  if (isAdmin || isKoord) {
+    addBtn = `<button class="btn btn-primary" onclick="handleAddProkerPrompt()">+ Tambah Proker Baru</button>`;
+  }
 
   return `
     ${head("DATA & MONITORING", "Monitoring Tugas", "Pantau tugas, progres, bukti, dan catatan situasi khusus.", addBtn)}
+    <section class="panel">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nama Tugas</th>
+              <th>Divisi</th>
+              <th>Penanggung Jawab</th>
+              <th>Status</th>
+              <th>Progres</th>
+              <th>Tenggat</th>
+              <th>Bukti</th>
+              <th>Catatan</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody>${rows || '<tr><td colspan="10" class="empty-cell">Belum ada proker terdaftar.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
     <section class="panel">
       <div class="table-wrap">
         <table>
@@ -479,37 +523,65 @@ function memberDetailPage() {
   if (!m) return membersPage();
 
   const divKey = isMe ? m.divisionKey : getMemberDivisionKey(m);
-  const backBtn = `<button class="btn btn-light" data-page="${isMe ? 'overview' : 'members'}">‚Üê Kembali</button>`;
+  const backBtn = `<button class="btn btn-light" data-page="${isMe ? 'overview' : 'members'}">? Kembali</button>`;
   const namaPanggilan = m.panggilan || m.namaPanggilan || String(m.namaLengkap || m.nama || "").split(' ')[0];
   
+  const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
+  const isAdmin = roleLower.includes("admin");
+  const isAudit = roleLower.includes("audit");
+  const isKoord = roleLower.includes("koordinator") || roleLower.includes("kord");
+  const canManageTracker = isAdmin || isAudit || (isKoord && currentUser.divisionKey === divKey);
+
   // Ambil data tracker dari tab perorangan di Google Sheets
-  fetch(`${API_URL}?action=getTracker&division=${encodeURIComponent(divKey)}&nickname=${encodeURIComponent(namaPanggilan)}${idToken ? '&idToken=' + idToken : ''}`)
+  fetch(`${API_URL}?action=getTracker&division=${encodeURIComponent(divKey)}&nickname=${encodeURIComponent(namaPanggilan)}${idToken ? '&idToken=' + idToken : '''}`)
     .then(r => r.json())
     .then(res => {
       const tbody = $("#trackerTableBody");
       if (!tbody) return;
       
       if (res.status === "error") {
-        tbody.innerHTML = `<tr><td colspan="2" class="empty-cell" style="color:#b93a3a;"><strong>Akses Ditolak:</strong> ${esc(res.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="3" class="empty-cell" style="color:#b93a3a;"><strong>Akses Ditolak:</strong> ${esc(res.message)}</td></tr>`;
       } else if (res.status === "success" && res.data.length > 0) {
-        tbody.innerHTML = res.data.map(t => `
+        window.currentTrackerData = res.data; // Simpan untuk edit
+        tbody.innerHTML = res.data.map((t, idx) => {
+          let dateStr = t.tanggal;
+          if (t.tanggal instanceof Date) dateStr = t.tanggal.toLocaleDateString('id-ID');
+          else if (String(t.tanggal).includes('T')) dateStr = t.tanggal.split('T')[0];
+          
+          let actionBtns = "ó";
+          if (canManageTracker && t.rowId) {
+            actionBtns = `
+              <div style="display:flex;gap:4px">
+                <button class="mini-btn" onclick="openTrackerModal('edit', '${divKey}', '${esc(namaPanggilan)}', ${t.rowId}, ${idx})">Edit</button>
+                <button class="mini-btn" style="background:#fce8e8;color:#d32f2f;" onclick="deleteTrackerRow('${divKey}', '${esc(namaPanggilan)}', ${t.rowId})">Hapus</button>
+              </div>
+            `;
+          }
+          
+          return `
           <tr>
-            <td style="white-space: nowrap;">${esc(t.tanggal instanceof Date ? t.tanggal.toLocaleDateString('id-ID') : t.tanggal)}</td>
+            <td style="white-space: nowrap;">${esc(dateStr)}</td>
             <td>
               <strong>${esc(t.kegiatan)}</strong> 
               <span class="badge ${t.poin > 0 ? 'badge-green' : (t.poin < 0 ? 'badge-red' : 'badge-gray')}" style="margin-left:8px;">${t.poin > 0 ? '+' : ''}${esc(t.poin)} Poin</span>
               <br><small>${esc(t.catatan)}</small>
             </td>
+            <td>${actionBtns}</td>
           </tr>
-        `).join("");
+        `}).join("");
       } else {
-        tbody.innerHTML = `<tr><td colspan="2" class="empty-cell">Belum ada riwayat / Tab '${esc(namaPanggilan)}' tidak ditemukan.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="3" class="empty-cell">Belum ada riwayat / Tab '${esc(namaPanggilan)}' tidak ditemukan.</td></tr>`;
       }
     })
     .catch(() => {
       const tbody = $("#trackerTableBody");
-      if (tbody) tbody.innerHTML = `<tr><td colspan="2" class="empty-cell">Gagal memuat riwayat. Periksa koneksi.</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr><td colspan="3" class="empty-cell">Gagal memuat riwayat. Periksa koneksi.</td></tr>`;
     });
+
+  let addTrackerBtnHTML = "";
+  if (canManageTracker) {
+    addTrackerBtnHTML = `<button class="btn btn-primary" style="margin-top:10px" onclick="openTrackerModal('add', '${divKey}', '${esc(namaPanggilan)}')">+ Tambah Tracker</button>`;
+  }
 
   return `
     ${head("MONITORING ANGGOTA", "Detail Anggota", `Profil dan catatan tracker ${esc(m.namaLengkap || m.nama)}.`, backBtn)}
@@ -534,6 +606,7 @@ function memberDetailPage() {
             <tr>
               <th style="width: 150px;">Tanggal</th>
               <th>Aktivitas & Catatan Auditor</th>
+              <th style="width: 120px;">Aksi</th>
             </tr>
           </thead>
           <tbody id="trackerTableBody">
@@ -574,17 +647,53 @@ function openUploadModal(idProker) {
 }
 
 function handleAddProkerPrompt() {
-  const namaProker = prompt("Masukkan nama Program Kerja baru:");
+  $("#addProkerName").value = "";
+  
+  const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
+  const isAdmin = roleLower.includes("admin");
+  const isKoord = roleLower.includes("koordinator") || roleLower.includes("kord");
+  
+  if (isAdmin || isKoord) {
+    $("#addProkerScopeContainer").style.display = "block";
+    $("#addProkerScope").value = "divisi"; // default
+  } else {
+    $("#addProkerScopeContainer").style.display = "none";
+    $("#addProkerScope").value = "divisi";
+  }
+
+  $("#addProkerModal")?.showModal();
+}
+
+function submitAddProker(e) {
+  e.preventDefault();
+  const namaProker = $("#addProkerName").value.trim();
+  const scope = $("#addProkerScope").value;
+  
   if (!namaProker) return;
+  
+  $("#addProkerModal")?.close();
+  toast("Menyiapkan proker baru...");
   
   const payload = {
     action: "addProker",
     division: currentDivision,
-    prokerData: { namaProker: namaProker.trim() }
+    scope: scope,
+    prokerData: { namaProker: namaProker }
   };
   
-  toast("Menyiapkan proker baru...");
   sendPostPayload(payload);
+}
+
+function handleDeleteProker(idProker, scope) {
+  if (!confirm(`Apakah Anda yakin ingin menghapus proker ${idProker}? Tindakan ini tidak dapat dibatalkan.`)) return;
+  
+  toast(`Menghapus proker ${idProker}...`);
+  sendPostPayload({
+    action: "deleteProker",
+    division: currentDivision,
+    scope: scope,
+    idProker: idProker
+  });
 }
 
 async function handleSaveProker(e) {
@@ -623,14 +732,19 @@ async function sendPostPayload(payload) {
     if (res.status === "success") {
       toast(res.message || "Berhasil disimpan!");
       $("#uploadModal")?.close();
+      $("#addProkerModal")?.close();
+      $("#trackerModal")?.close();
       
-      // Background sync: tarik data baru tanpa menghapus layar (menghindari flicker)
+      // Background sync
       fetchDivisionData();
+      return res;
     } else {
       toast("Gagal: " + res.message);
+      return Promise.reject(res.message);
     }
   } catch (err) {
     toast("Terjadi kesalahan koneksi!");
+    return Promise.reject(err);
   }
 }
 
@@ -717,3 +831,81 @@ document.addEventListener('touchend', e => {
 
 // Jalankan Inisialisasi Utama
 initApp();
+
+
+
+
+
+// === TRACKER CRUD FUNCTIONS ===
+window.currentTrackerContext = {};
+
+function openTrackerModal(action, divKey, nickname, rowId = null, dataIdx = null) {
+  window.currentTrackerContext = { action, divKey, nickname, rowId };
+  $("#trackerModalTitle").textContent = action === "add" ? "Tambah Tracker" : "Edit Tracker";
+  $("#formTrackerAction").value = action;
+  $("#formTrackerRowId").value = rowId || "";
+  
+  if (action === "edit" && window.currentTrackerData && window.currentTrackerData[dataIdx]) {
+    const t = window.currentTrackerData[dataIdx];
+    let dateStr = t.tanggal;
+    if (t.tanggal instanceof Date) dateStr = t.tanggal.toISOString().split(''T'')[0];
+    else if (String(t.tanggal).includes(''T'')) dateStr = t.tanggal.split(''T'')[0];
+    else {
+      try { dateStr = new Date(t.tanggal).toISOString().split(''T'')[0]; } catch(e) { dateStr = ""; }
+    }
+    
+    $("#formTrackerTanggal").value = dateStr;
+    $("#formTrackerKegiatan").value = t.kegiatan || "";
+    $("#formTrackerPoin").value = t.poin || 0;
+    $("#formTrackerCatatan").value = t.catatan || "";
+  } else {
+    const tzOffset = new Date().getTimezoneOffset() * 60000;
+    const localDate = new Date(Date.now() - tzOffset).toISOString().split(''T'')[0];
+    $("#formTrackerTanggal").value = localDate;
+    $("#formTrackerKegiatan").value = "";
+    $("#formTrackerPoin").value = "";
+    $("#formTrackerCatatan").value = "";
+  }
+  
+  $("#trackerModal")?.showModal();
+}
+
+function handleSaveTracker(e) {
+  e.preventDefault();
+  const ctx = window.currentTrackerContext;
+  if (!ctx || !ctx.divKey) return;
+  
+  $("#trackerModal")?.close();
+  toast("Menyimpan tracker...");
+  
+  const payload = {
+    action: "manageTracker",
+    division: ctx.divKey,
+    actionTracker: $("#formTrackerAction").value,
+    nickname: ctx.nickname,
+    rowId: $("#formTrackerRowId").value ? Number($("#formTrackerRowId").value) : null,
+    tanggal: $("#formTrackerTanggal").value,
+    kegiatan: $("#formTrackerKegiatan").value.trim(),
+    poin: Number($("#formTrackerPoin").value),
+    catatan: $("#formTrackerCatatan").value.trim()
+  };
+  
+  sendPostPayload(payload).then(() => {
+    if (currentPage === "member-detail") go("member-detail");
+  }).catch(() => {});
+}
+
+function deleteTrackerRow(divKey, nickname, rowId) {
+  if (!confirm("Hapus baris tracker ini? Tindakan ini tidak dapat dibatalkan.")) return;
+  toast("Menghapus tracker...");
+  const payload = {
+    action: "manageTracker",
+    division: divKey,
+    actionTracker: "delete",
+    nickname: nickname,
+    rowId: rowId
+  };
+  sendPostPayload(payload).then(() => {
+    if (currentPage === "member-detail") go("member-detail");
+  }).catch(() => {});
+}
