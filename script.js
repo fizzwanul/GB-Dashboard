@@ -339,7 +339,7 @@ function taskRow(t) {
   if (canManage) {
     actionsHTML = `
       <div style="display:flex;align-items:center;gap:4px">
-        <button class="mini-btn" onclick="openUploadModal('${esc(prokerId)}')">${hasBukti ? "Edit Bukti" : "+ Tambah Bukti"}</button>
+        <button class="mini-btn" onclick="openUploadModal('${esc(prokerId)}')">Edit</button>
         <button class="mini-btn" style="background:#fce8e8;color:#d32f2f;" onclick="handleDeleteProker('${esc(prokerId)}', '${isGlobalScope ? 'global' : 'divisi'}')">Hapus</button>
       </div>
     `;
