@@ -518,8 +518,8 @@ function memberDetailPage() {
         const totalPoin = Number(res.totalPoin) || 0;
         const targetPoin = 25;
         const percent = Math.min(100, Math.max(0, Math.round((totalPoin / targetPoin) * 100)));
-        const strokeColor = totalPoin >= targetPoin ? "#4caf50" : (totalPoin > 0 ? "#ff9800" : "#ccc");
-        const statusText = totalPoin >= targetPoin ? "Memenuhi" : "Belum memenuhi";
+        const statusText = res.statusEvaluasi || "Belum memenuhi";
+        const strokeColor = statusText === "Memenuhi" ? "#4caf50" : (totalPoin > 0 ? "#ff9800" : "#ccc");
         
         const circle = $("#progressCircle");
         if (circle) {
