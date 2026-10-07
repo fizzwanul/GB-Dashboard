@@ -514,6 +514,35 @@ function memberDetailPage() {
   fetch(`${API_URL}?action=getTracker&division=${encodeURIComponent(divKey)}&nickname=${encodeURIComponent(namaPanggilan)}${idToken ? '&idToken=' + idToken : ''}`)
     .then(r => r.json())
     .then(res => {
+      if (res.totalPoin !== undefined) {
+        const totalPoin = Number(res.totalPoin) || 0;
+        const targetPoin = 25;
+        const percent = Math.min(100, Math.max(0, Math.round((totalPoin / targetPoin) * 100)));
+        const strokeColor = totalPoin >= targetPoin ? "#4caf50" : (totalPoin > 0 ? "#ff9800" : "#ccc");
+        const statusText = totalPoin >= targetPoin ? "Memenuhi" : "Belum memenuhi";
+        
+        const circle = $("#progressCircle");
+        if (circle) {
+          circle.setAttribute("stroke-dasharray", `${percent}, 100`);
+          circle.setAttribute("stroke", strokeColor);
+        }
+        
+        const pctEl = $("#progressPercent");
+        if (pctEl) {
+          pctEl.textContent = `${percent}%`;
+          pctEl.style.color = strokeColor;
+        }
+        
+        const txtEl = $("#progressText");
+        if (txtEl) txtEl.textContent = `${totalPoin} / ${targetPoin}`;
+        
+        const statusEl = $("#progressStatus");
+        if (statusEl) {
+          statusEl.textContent = statusText;
+          statusEl.style.color = strokeColor;
+        }
+      }
+
       const tbody = $("#trackerTableBody");
       if (!tbody) return;
       
@@ -565,10 +594,37 @@ function memberDetailPage() {
     ${head("MONITORING ANGGOTA", "Detail Anggota", `Profil dan riwayat poin keaktifan ${esc(m.namaLengkap || m.nama)}.`, backBtn)}
     
     <div class="stats-grid">
-      ${stat("Nama Anggota", esc(m.namaLengkap || m.nama), "♙", "blue", esc(m.iDAnggota || m.idAnggota || m.id || "—"))}
+      <article class="stat-card">
+        <div class="stat-top">
+          <span class="stat-label">Nama Anggota</span>
+          <span class="stat-icon blue">♙</span>
+        </div>
+        <div class="stat-value">${esc(m.namaLengkap || m.nama)}</div>
+        <div class="stat-foot">${esc(m.iDAnggota || m.idAnggota || m.id || "—")}</div>
+        <div style="font-size: 0.85em; color: #666; margin-top: 4px; overflow-wrap: anywhere;">
+          ${esc(m.email || m.surel || namaPanggilan)}
+        </div>
+      </article>
+      
       ${stat("Divisi", esc(m.divisi || DIVISION_LABELS[divKey] || divKey), "▣", "purple", "Divisi aktif")}
       ${stat("Role / Jabatan", esc(m.role || m.jabatan || "Anggota"), "✦", "green", "Posisi kepengurusan")}
-      ${m.email || m.surel ? stat("Email", esc(m.email || m.surel), "✉", "orange", "Email Terdaftar") : stat("Tab Panggilan", esc(namaPanggilan), "◷", "orange", "Referensi sheet")}
+      
+      <article class="stat-card" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding: 15px;">
+        <span style="font-size:12px; color:#666; align-self:flex-start;">Total Poin Keaktifan</span>
+        <div style="position:relative; width:70px; height:70px;">
+          <svg viewBox="0 0 36 36" style="width:100%; height:100%;">
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#eee" stroke-width="3.5" />
+            <path id="progressCircle" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#ccc" stroke-width="3.5" stroke-dasharray="0, 100" />
+          </svg>
+          <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-weight:bold; font-size:14px; text-align:center;">
+            <span id="progressPercent">0%</span>
+          </div>
+        </div>
+        <div style="text-align:center; line-height:1.2;">
+          <div id="progressText" style="font-weight:600; font-size:14px;">- / 25</div>
+          <div id="progressStatus" style="font-size:12px; color:#666;">Memuat...</div>
+        </div>
+      </article>
     </div>
 
     <section class="panel">
