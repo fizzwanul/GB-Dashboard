@@ -147,10 +147,17 @@ function applyRolePermissions() {
   if (userProfile) {
     userProfile.style.display = guest ? "none" : "flex";
     const userBadge = $("#userBadge");
-    if (userBadge && !guest) {
-      userBadge.textContent = `${currentUser.nama} · ${currentUser.role}`;
+    const userAvatar = $("#userAvatar");
+    if (!guest) {
+      if (userBadge) userBadge.textContent = `${currentUser.nama} · ${currentUser.role}`;
+      if (userAvatar) userAvatar.textContent = String(currentUser.nama).charAt(0).toUpperCase();
     }
   }
+}
+
+function openMyProfile() {
+  selectedMemberId = "me";
+  go("member-detail");
 }
 
 // === 1b. FETCH DAFTAR ANGGOTA SEMUA DIVISI (MODE GUEST) ===
@@ -211,12 +218,21 @@ async function fetchDivisionData() {
 
   try {
     const [membersRes, kpiRes] = await Promise.all([
-      fetch(`${API_URL}?action=getMembers&division=${targetDivision}`).then(r => r.json()),
-      fetch(`${API_URL}?action=getKPI&division=${targetDivision}`).then(r => r.json())
+      fetch(`${API_URL}?action=getMembers&division=${targetDivision}${idToken ? '&idToken=' + idToken : ''}`).then(r => r.json()),
+      fetch(`${API_URL}?action=getKPI&division=${targetDivision}${idToken ? '&idToken=' + idToken : ''}`).then(r => r.json())
     ]);
 
     const freshMembers = membersRes.data || [];
     const freshTasks = kpiRes.data || [];
+    
+    if (membersRes.status === "error") {
+      toast(membersRes.message);
+      if (membersRes.message.includes("Akses ditolak")) {
+        // Clean screen or show error
+        $("#content").innerHTML = `<div style="text-align:center; padding:50px;"><strong>${membersRes.message}</strong></div>`;
+        return;
+      }
+    }
 
     // Bandingkan apakah ada perubahan data (members ATAU tasks)
     const membersChanged = JSON.stringify(freshMembers) !== JSON.stringify(globalData.members);
@@ -457,22 +473,25 @@ function membersPage() {
 }
 
 function memberDetailPage() {
-  const m = currentMemberList().find(x => getMemberId(x) === String(selectedMemberId));
+  const isMe = selectedMemberId === "me";
+  const m = isMe ? currentUser : currentMemberList().find(x => getMemberId(x) === String(selectedMemberId));
   
   if (!m) return membersPage();
 
-  const divKey = getMemberDivisionKey(m);
-  const backBtn = `<button class="btn btn-light" data-page="members">← Kembali ke daftar</button>`;
+  const divKey = isMe ? m.divisionKey : getMemberDivisionKey(m);
+  const backBtn = `<button class="btn btn-light" data-page="${isMe ? 'overview' : 'members'}">← Kembali</button>`;
   const namaPanggilan = m.panggilan || m.namaPanggilan || String(m.namaLengkap || m.nama || "").split(' ')[0];
   
   // Ambil data tracker dari tab perorangan di Google Sheets
-  fetch(`${API_URL}?action=getTracker&division=${encodeURIComponent(divKey)}&nickname=${encodeURIComponent(namaPanggilan)}`)
+  fetch(`${API_URL}?action=getTracker&division=${encodeURIComponent(divKey)}&nickname=${encodeURIComponent(namaPanggilan)}${idToken ? '&idToken=' + idToken : ''}`)
     .then(r => r.json())
     .then(res => {
       const tbody = $("#trackerTableBody");
       if (!tbody) return;
       
-      if (res.status === "success" && res.data.length > 0) {
+      if (res.status === "error") {
+        tbody.innerHTML = `<tr><td colspan="2" class="empty-cell" style="color:#b93a3a;"><strong>Akses Ditolak:</strong> ${esc(res.message)}</td></tr>`;
+      } else if (res.status === "success" && res.data.length > 0) {
         tbody.innerHTML = res.data.map(t => `
           <tr>
             <td style="white-space: nowrap;">${esc(t.tanggal instanceof Date ? t.tanggal.toLocaleDateString('id-ID') : t.tanggal)}</td>
@@ -499,7 +518,7 @@ function memberDetailPage() {
       ${stat("Nama Anggota", esc(m.namaLengkap || m.nama), "♙", "blue", esc(m.iDAnggota || m.idAnggota || m.id || "—"))}
       ${stat("Divisi", esc(m.divisi || DIVISION_LABELS[divKey] || divKey), "▣", "purple", "Divisi aktif")}
       ${stat("Role / Jabatan", esc(m.role || m.jabatan || "Anggota"), "✦", "green", "Posisi kepengurusan")}
-      ${stat("Tab Panggilan", esc(namaPanggilan), "◷", "orange", "Referensi sheet")}
+      ${m.email || m.surel ? stat("Email", esc(m.email || m.surel), "✉", "orange", "Email Terdaftar") : stat("Tab Panggilan", esc(namaPanggilan), "◷", "orange", "Referensi sheet")}
     </div>
 
     <section class="panel">

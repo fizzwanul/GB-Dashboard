@@ -32,7 +32,8 @@
         <div class="top-actions">
           <div id="googleLoginBtn"></div>
           <div id="userProfile" style="display:none; align-items: center; gap: 10px;">
-            <span id="userBadge" class="demo-pill"></span>
+            <div id="userAvatar" class="avatar" style="cursor:pointer; flex-shrink: 0;" onclick="openMyProfile()" title="Detail Keanggotaan"></div>
+            <span id="userBadge" class="demo-pill" style="cursor:pointer;" onclick="openMyProfile()"></span>
             <button class="btn btn-light" id="logoutBtn" type="button" onclick="handleLogout()" style="padding: 6px 10px;">Keluar</button>
           </div>
           <select id="divisionSelect" class="select" style="font-weight: 600; padding: 8px 12px; border-radius: 8px;">
