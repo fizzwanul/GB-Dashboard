@@ -1,4 +1,4 @@
-const $ = (s, root = document) => root.querySelector(s); const $$ = (s, root = document) => [...root.querySelectorAll(s)];
+﻿const $ = (s, root = document) => root.querySelector(s); const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
 const API_URL = "https://script.google.com/macros/s/AKfycbxYpvxxkElZVostCLGLV51N_kU1ZsEDf1Th6Ax3FvApkTCvgg7mlvDiFF4IFJDBREyu/exec";
 const GOOGLE_CLIENT_ID = "913208175994-26v5bqfrqftd4ijpg6an1ihisnqmeu1a.apps.googleusercontent.com";
