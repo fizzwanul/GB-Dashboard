@@ -1,4 +1,4 @@
-﻿const $ = (s, root = document) => root.querySelector(s); const $$ = (s, root = document) => [...root.querySelectorAll(s)];
+const $ = (s, root = document) => root.querySelector(s); const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
 const API_URL = "https://script.google.com/macros/s/AKfycbxYpvxxkElZVostCLGLV51N_kU1ZsEDf1Th6Ax3FvApkTCvgg7mlvDiFF4IFJDBREyu/exec";
 const GOOGLE_CLIENT_ID = "913208175994-26v5bqfrqftd4ijpg6an1ihisnqmeu1a.apps.googleusercontent.com";
@@ -511,78 +511,92 @@ function memberDetailPage() {
   const canManageTracker = isAdmin || isAudit || (isKoord && currentUser.divisionKey === divKey);
 
   // Ambil data tracker dari tab perorangan di Google Sheets
+  const cacheKeyTracker = `genbi_tracker_${divKey}_${namaPanggilan}`;
+  
+  const updateTrackerDOM = (res) => {
+    if (res.totalPoin !== undefined) {
+      const totalPoin = Number(res.totalPoin) || 0;
+      const targetPoin = 25;
+      const percent = Math.min(100, Math.max(0, Math.round((totalPoin / targetPoin) * 100)));
+      const statusText = res.statusEvaluasi || "Belum memenuhi";
+      const strokeColor = statusText === "Memenuhi" ? "#4caf50" : (totalPoin > 0 ? "#ff9800" : "#ccc");
+      
+      const circle = $("#progressCircle");
+      if (circle) {
+        circle.setAttribute("stroke-dasharray", `${percent}, 100`);
+        circle.setAttribute("stroke", strokeColor);
+      }
+      
+      const pctEl = $("#progressPercent");
+      if (pctEl) {
+        pctEl.textContent = `${percent}%`;
+        pctEl.style.color = strokeColor;
+      }
+      
+      const txtEl = $("#progressText");
+      if (txtEl) txtEl.textContent = `${totalPoin} / ${targetPoin}`;
+      
+      const statusEl = $("#progressStatus");
+      if (statusEl) {
+        statusEl.textContent = statusText;
+        statusEl.style.color = strokeColor;
+      }
+    }
+
+    const tbody = $("#trackerTableBody");
+    if (!tbody) return;
+    
+    if (res.status === "error") {
+      tbody.innerHTML = `<tr><td colspan="3" class="empty-cell" style="color:#b93a3a;"><strong>Akses Ditolak:</strong> ${esc(res.message)}</td></tr>`;
+    } else if (res.status === "success" && res.data.length > 0) {
+      window.currentTrackerData = res.data; // Simpan untuk edit
+      tbody.innerHTML = res.data.map((t, idx) => {
+        let dateStr = t.tanggal;
+        if (t.tanggal instanceof Date) dateStr = t.tanggal.toLocaleDateString('id-ID');
+        else if (String(t.tanggal).includes('T')) dateStr = t.tanggal.split('T')[0];
+        
+        let actionBtns = "-";
+        if (canManageTracker && t.rowId) {
+          actionBtns = `
+            <div style="display:flex;gap:4px">
+              <button class="mini-btn" onclick="openTrackerModal('edit', '${divKey}', '${esc(namaPanggilan)}', ${t.rowId}, ${idx})">Edit</button>
+              <button class="mini-btn" style="background:#fce8e8;color:#d32f2f;" onclick="deleteTrackerRow('${divKey}', '${esc(namaPanggilan)}', ${t.rowId})">Hapus</button>
+            </div>
+          `;
+        }
+        
+        return `
+        <tr>
+          <td style="white-space: nowrap;">${esc(dateStr)}</td>
+          <td>
+            <strong>${esc(t.kegiatan)}</strong> 
+            <span class="badge ${t.poin > 0 ? 'badge-green' : (t.poin < 0 ? 'badge-red' : 'badge-gray')}" style="margin-left:8px;">${t.poin > 0 ? '+' : ''}${esc(t.poin)} Poin</span>
+            <br><small>${esc(t.catatan)}</small>
+          </td>
+          <td>${actionBtns}</td>
+        </tr>
+      `}).join("");
+    } else {
+      tbody.innerHTML = `<tr><td colspan="3" class="empty-cell">Belum ada riwayat / Tab '${esc(namaPanggilan)}' tidak ditemukan.</td></tr>`;
+    }
+  };
+
+  const cachedTracker = sessionStorage.getItem(cacheKeyTracker);
+  if (cachedTracker) {
+    try { updateTrackerDOM(JSON.parse(cachedTracker)); } catch(e) {}
+  }
+
   fetch(`${API_URL}?action=getTracker&division=${encodeURIComponent(divKey)}&nickname=${encodeURIComponent(namaPanggilan)}${idToken ? '&idToken=' + idToken : ''}`)
     .then(r => r.json())
     .then(res => {
-      if (res.totalPoin !== undefined) {
-        const totalPoin = Number(res.totalPoin) || 0;
-        const targetPoin = 25;
-        const percent = Math.min(100, Math.max(0, Math.round((totalPoin / targetPoin) * 100)));
-        const statusText = res.statusEvaluasi || "Belum memenuhi";
-        const strokeColor = statusText === "Memenuhi" ? "#4caf50" : (totalPoin > 0 ? "#ff9800" : "#ccc");
-        
-        const circle = $("#progressCircle");
-        if (circle) {
-          circle.setAttribute("stroke-dasharray", `${percent}, 100`);
-          circle.setAttribute("stroke", strokeColor);
-        }
-        
-        const pctEl = $("#progressPercent");
-        if (pctEl) {
-          pctEl.textContent = `${percent}%`;
-          pctEl.style.color = strokeColor;
-        }
-        
-        const txtEl = $("#progressText");
-        if (txtEl) txtEl.textContent = `${totalPoin} / ${targetPoin}`;
-        
-        const statusEl = $("#progressStatus");
-        if (statusEl) {
-          statusEl.textContent = statusText;
-          statusEl.style.color = strokeColor;
-        }
-      }
-
-      const tbody = $("#trackerTableBody");
-      if (!tbody) return;
-      
-      if (res.status === "error") {
-        tbody.innerHTML = `<tr><td colspan="3" class="empty-cell" style="color:#b93a3a;"><strong>Akses Ditolak:</strong> ${esc(res.message)}</td></tr>`;
-      } else if (res.status === "success" && res.data.length > 0) {
-        window.currentTrackerData = res.data; // Simpan untuk edit
-        tbody.innerHTML = res.data.map((t, idx) => {
-          let dateStr = t.tanggal;
-          if (t.tanggal instanceof Date) dateStr = t.tanggal.toLocaleDateString('id-ID');
-          else if (String(t.tanggal).includes('T')) dateStr = t.tanggal.split('T')[0];
-          
-          let actionBtns = "-";
-          if (canManageTracker && t.rowId) {
-            actionBtns = `
-              <div style="display:flex;gap:4px">
-                <button class="mini-btn" onclick="openTrackerModal('edit', '${divKey}', '${esc(namaPanggilan)}', ${t.rowId}, ${idx})">Edit</button>
-                <button class="mini-btn" style="background:#fce8e8;color:#d32f2f;" onclick="deleteTrackerRow('${divKey}', '${esc(namaPanggilan)}', ${t.rowId})">Hapus</button>
-              </div>
-            `;
-          }
-          
-          return `
-          <tr>
-            <td style="white-space: nowrap;">${esc(dateStr)}</td>
-            <td>
-              <strong>${esc(t.kegiatan)}</strong> 
-              <span class="badge ${t.poin > 0 ? 'badge-green' : (t.poin < 0 ? 'badge-red' : 'badge-gray')}" style="margin-left:8px;">${t.poin > 0 ? '+' : ''}${esc(t.poin)} Poin</span>
-              <br><small>${esc(t.catatan)}</small>
-            </td>
-            <td>${actionBtns}</td>
-          </tr>
-        `}).join("");
-      } else {
-        tbody.innerHTML = `<tr><td colspan="3" class="empty-cell">Belum ada riwayat / Tab '${esc(namaPanggilan)}' tidak ditemukan.</td></tr>`;
-      }
+      try { sessionStorage.setItem(cacheKeyTracker, JSON.stringify(res)); } catch(e) {}
+      updateTrackerDOM(res);
     })
     .catch(() => {
-      const tbody = $("#trackerTableBody");
-      if (tbody) tbody.innerHTML = `<tr><td colspan="3" class="empty-cell">Gagal memuat riwayat. Periksa koneksi.</td></tr>`;
+      if (!cachedTracker) {
+        const tbody = $("#trackerTableBody");
+        if (tbody) tbody.innerHTML = `<tr><td colspan="3" class="empty-cell">Gagal memuat riwayat. Periksa koneksi.</td></tr>`;
+      }
     });
 
   let addTrackerBtnHTML = "";
