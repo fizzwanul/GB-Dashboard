@@ -558,11 +558,11 @@ function memberDetailPage() {
 
   let addTrackerBtnHTML = "";
   if (canManageTracker) {
-    addTrackerBtnHTML = `<button class="btn btn-primary" style="margin-top:10px" onclick="openTrackerModal('add', '${divKey}', '${esc(namaPanggilan)}')">+ Tambah Tracker</button>`;
+    addTrackerBtnHTML = `<button class="btn btn-primary" style="margin-top:10px" onclick="openTrackerModal('add', '${divKey}', '${esc(namaPanggilan)}')">+ Tambah Riwayat</button>`;
   }
 
   return `
-    ${head("MONITORING ANGGOTA", "Detail Anggota", `Profil dan catatan tracker ${esc(m.namaLengkap || m.nama)}.`, backBtn)}
+    ${head("MONITORING ANGGOTA", "Detail Anggota", `Profil dan riwayat poin keaktifan ${esc(m.namaLengkap || m.nama)}.`, backBtn)}
     
     <div class="stats-grid">
       ${stat("Nama Anggota", esc(m.namaLengkap || m.nama), "♙", "blue", esc(m.iDAnggota || m.idAnggota || m.id || "—"))}
@@ -574,7 +574,7 @@ function memberDetailPage() {
     <section class="panel">
       <div class="panel-head">
         <div>
-          <h2>Catatan Tracker Jabatan</h2>
+          <h2>Riwayat Poin Keaktifan</h2>
           <p>Daftar riwayat aktivitas, keaktifan, dan evaluasi anggota.</p>
         </div>
       </div>
@@ -588,7 +588,7 @@ function memberDetailPage() {
             </tr>
           </thead>
           <tbody id="trackerTableBody">
-            <tr><td colspan="2" style="text-align:center; padding: 30px;"><em>Memuat riwayat tracker...</em></td></tr>
+            <tr><td colspan="2" style="text-align:center; padding: 30px;"><em>Memuat riwayat poin...</em></td></tr>
           </tbody>
         </table>
       </div>
@@ -820,7 +820,7 @@ window.currentTrackerContext = {};
 
 function openTrackerModal(action, divKey, nickname, rowId = null, dataIdx = null) {
   window.currentTrackerContext = { action, divKey, nickname, rowId };
-  $("#trackerModalTitle").textContent = action === "add" ? "Tambah Tracker" : "Edit Tracker";
+  $("#trackerModalTitle").textContent = action === "add" ? "Tambah Riwayat" : "Edit Riwayat";
   $("#formTrackerAction").value = action;
   $("#formTrackerRowId").value = rowId || "";
   
@@ -855,7 +855,7 @@ function handleSaveTracker(e) {
   if (!ctx || !ctx.divKey) return;
   
   $("#trackerModal")?.close();
-  toast("Menyimpan tracker...");
+  toast("Menyimpan riwayat...");
   
   const payload = {
     action: "manageTracker",
@@ -875,8 +875,8 @@ function handleSaveTracker(e) {
 }
 
 function deleteTrackerRow(divKey, nickname, rowId) {
-  if (!confirm("Hapus baris tracker ini? Tindakan ini tidak dapat dibatalkan.")) return;
-  toast("Menghapus tracker...");
+  if (!confirm("Hapus baris riwayat ini? Tindakan ini tidak dapat dibatalkan.")) return;
+  toast("Menghapus riwayat...");
   const payload = {
     action: "manageTracker",
     division: divKey,
