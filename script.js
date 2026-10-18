@@ -12,6 +12,7 @@ let isFetching = false;
 let currentFetchDivision = null; // Untuk mencegah race condition
 let selectedMemberId = null;
 let memberQuery = "";
+let sessionGeneration = 0;
 
 const DIVISION_LABELS = {
   inti: "Pengurus Inti",
@@ -157,9 +158,25 @@ function initializeGoogleSignIn() {
   }
 }
 
+function clearGenbiSessionStorage() {
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i);
+      if (k && k.startsWith("genbi_")) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach(k => sessionStorage.removeItem(k));
+  } catch (e) {
+    console.error("Gagal membersihkan cache session:", e);
+  }
+}
+
 async function handleCredentialResponse(response) {
   const token = response.credential;
   toast("Memvalidasi login...");
+  const thisSession = sessionGeneration;
   
   try {
     const res = await fetch(API_URL, {
@@ -167,7 +184,18 @@ async function handleCredentialResponse(response) {
       body: JSON.stringify({ action: "verifyLogin", idToken: token })
     }).then(r => r.json());
     
+    // Tolak jika sesi berubah selama request validasi berlangsung
+    if (thisSession !== sessionGeneration) return;
+
     if (res.status === "success") {
+      sessionGeneration++;
+      clearGenbiSessionStorage();
+      isFetching = false;
+      currentFetchDivision = null;
+      globalData = { members: [], tasks: [], dashboard: [], allMembers: [] };
+      selectedMemberId = null;
+      if (window.currentTrackerData) window.currentTrackerData = [];
+
       currentUser = res.user;
       idToken = token;
       currentDivision = currentUser.divisionKey || "pendidikan";
@@ -184,25 +212,52 @@ async function handleCredentialResponse(response) {
       
       render();
       await fetchDivisionData();
-    } else if (res.status === "debug_error") {
-      const dbg = `DIAGNOSTIC LOGIN GAGAL:\n\nHTTP Code: ${res.httpCode}\nValid Audience: ${res.validAud}\nValid Issuer: ${res.validIss}\nValid Expiry: ${res.validExp}\nEmail Verified: ${res.emailVerified}\nHas Email: ${res.hasEmail}\nHas Sub: ${res.hasSub}`;
-      alert(dbg);
-      toast("Login ditolak. Lihat alert diagnostik.");
-      google.accounts.id.revoke(token, () => {});
     } else {
-      toast(res.message || "Gagal login.");
+      sessionGeneration++; // Batalkan request lama yang masih in-flight jika login ditolak/gagal
+      currentUser = null;
+      idToken = null;
+      isFetching = false;
+      currentFetchDivision = null;
+      if (res.status === "debug_error") {
+        const dbg = `DIAGNOSTIC LOGIN GAGAL:\n\nHTTP Code: ${res.httpCode}\nValid Audience: ${res.validAud}\nValid Issuer: ${res.validIss}\nValid Expiry: ${res.validExp}\nEmail Verified: ${res.emailVerified}\nHas Email: ${res.hasEmail}\nHas Sub: ${res.hasSub}`;
+        alert(dbg);
+        toast("Login ditolak. Lihat alert diagnostik.");
+      } else {
+        toast(res.message || "Gagal login.");
+      }
       google.accounts.id.revoke(token, () => {});
+      if (isGuest() && (!globalData.allMembers || globalData.allMembers.length === 0)) {
+        fetchAllMembers();
+      }
     }
   } catch (e) {
+    sessionGeneration++; // Batalkan request lama jika terjadi error jaringan saat login
+    currentUser = null;
+    idToken = null;
+    isFetching = false;
+    currentFetchDivision = null;
     toast("Kesalahan jaringan saat validasi login.");
+    if (isGuest() && (!globalData.allMembers || globalData.allMembers.length === 0)) {
+      fetchAllMembers();
+    }
   }
 }
 
 function handleLogout() {
+  sessionGeneration++;
   if (idToken && window.google) google.accounts.id.revoke(idToken, () => {});
-  sessionStorage.removeItem("genbi_user");
-  sessionStorage.removeItem("genbi_token");
-  currentUser = null; idToken = null; currentPage = "members";
+  clearGenbiSessionStorage(); // Bersihkan hanya cache The GB Dash (user, token, divisi, anggota, tracker)
+  currentUser = null;
+  idToken = null;
+  currentPage = "members";
+  selectedMemberId = null;
+  memberQuery = "";
+  currentDivision = "pendidikan";
+  currentFetchDivision = null;
+  isFetching = false;
+  globalData = { members: [], tasks: [], dashboard: [], allMembers: [] };
+  if (window.currentTrackerData) window.currentTrackerData = [];
+
   toast("Anda telah keluar.");
   applyRolePermissions();
   render();
@@ -248,6 +303,9 @@ function applyRolePermissions() {
     if (!guest) {
       if (userBadge) userBadge.textContent = `${currentUser.nama} · ${currentUser.role}`;
       if (userAvatar) userAvatar.textContent = String(currentUser.nama).charAt(0).toUpperCase();
+    } else {
+      if (userBadge) userBadge.textContent = "";
+      if (userAvatar) userAvatar.textContent = "";
     }
   }
 }
@@ -259,6 +317,8 @@ function openMyProfile() {
 
 // === 1b. FETCH DAFTAR ANGGOTA SEMUA DIVISI (MODE GUEST) ===
 async function fetchAllMembers() {
+  if (!isGuest()) return; // Batalkan jika user telah login
+  const thisSession = sessionGeneration;
   const cacheKey = "genbi_cache_all_members";
   let cachedData = null;
   try { cachedData = sessionStorage.getItem(cacheKey); } catch (e) {}
@@ -266,23 +326,25 @@ async function fetchAllMembers() {
   if (cachedData) {
     try {
       globalData.allMembers = JSON.parse(cachedData);
-      render();
+      if (thisSession === sessionGeneration && isGuest()) render();
     } catch (e) { cachedData = null; }
   }
-  if (!cachedData) {
+  if (!cachedData && thisSession === sessionGeneration && isGuest()) {
     $("#content").innerHTML = `<div style="text-align:center; padding:50px;"><strong>Memuat daftar anggota...</strong></div>`;
   }
 
   try {
     const res = await fetch(`${API_URL}?action=getAllMembers`).then(r => r.json());
+    if (thisSession !== sessionGeneration || !isGuest()) return; // Batalkan jika user telah login atau sesi berubah
     const fresh = res.data || [];
     if (!cachedData || JSON.stringify(fresh) !== JSON.stringify(globalData.allMembers)) {
       globalData.allMembers = fresh;
       try { sessionStorage.setItem(cacheKey, JSON.stringify(fresh)); } catch (e) {}
       // Jangan render ulang kalau user sedang mengetik di kolom cari
-      if (document.activeElement?.id !== "memberSearch") render();
+      if (thisSession === sessionGeneration && isGuest() && document.activeElement?.id !== "memberSearch") render();
     }
   } catch (e) {
+    if (thisSession !== sessionGeneration || !isGuest()) return;
     if (!cachedData) {
       $("#content").innerHTML = `<div style="text-align:center; padding:50px;"><strong>Gagal memuat data. Periksa koneksi lalu muat ulang halaman.</strong></div>`;
     }
@@ -291,8 +353,9 @@ async function fetchAllMembers() {
 
 // === 2. FETCH DATA DIVISI ===
 async function fetchDivisionData() {
+  if (isGuest()) return; // Batalkan jika tidak sedang login
+  const thisSession = sessionGeneration;
   const targetDivision = currentDivision; // Capture divisi saat ini untuk memblokir race condition
-  currentFetchDivision = targetDivision;
 
   const cacheKey = `genbi_cache_${targetDivision}`;
   const cachedData = sessionStorage.getItem(cacheKey);
@@ -302,7 +365,7 @@ async function fetchDivisionData() {
       const parsed = JSON.parse(cachedData);
       globalData.members = parsed.members;
       globalData.tasks = parsed.tasks;
-      if (currentFetchDivision === targetDivision) render();
+      if (currentDivision === targetDivision && thisSession === sessionGeneration && !isGuest()) render();
     } catch (e) {}
   } else {
     if (!isFetching) {
@@ -312,12 +375,16 @@ async function fetchDivisionData() {
 
   if (isFetching) return;
   isFetching = true;
+  currentFetchDivision = targetDivision;
 
   try {
     const [membersRes, kpiRes] = await Promise.all([
       fetch(`${API_URL}?action=getMembers&division=${targetDivision}${idToken ? '&idToken=' + idToken : ''}`).then(r => r.json()),
       fetch(`${API_URL}?action=getKPI&division=${targetDivision}${idToken ? '&idToken=' + idToken : ''}`).then(r => r.json())
     ]);
+
+    // Batalkan respons jika sesi login telah berubah atau user telah logout
+    if (thisSession !== sessionGeneration || isGuest()) return;
 
     const freshMembers = membersRes.data || [];
     const freshTasks = kpiRes.data || [];
@@ -338,14 +405,16 @@ async function fetchDivisionData() {
 
     if (hasChanged || !cachedData) {
       // Pastikan user belum pindah divisi sebelum data selesai dimuat
-      if (currentFetchDivision === targetDivision) {
+      if (currentDivision === targetDivision && thisSession === sessionGeneration && !isGuest()) {
         globalData.members = freshMembers;
         globalData.tasks = freshTasks;
 
-        sessionStorage.setItem(cacheKey, JSON.stringify({
-          members: freshMembers,
-          tasks: freshTasks
-        }));
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify({
+            members: freshMembers,
+            tasks: freshTasks
+          }));
+        } catch (e) {}
 
         render();
       }
@@ -353,10 +422,13 @@ async function fetchDivisionData() {
   } catch (e) {
     console.error("Gagal memuat data dari server:", e);
   } finally {
-    isFetching = false;
-    // Jika ada request pindah divisi tertunda yang diblokir oleh isFetching
-    if (currentFetchDivision !== currentDivision) {
-      fetchDivisionData(); 
+    if (thisSession === sessionGeneration) {
+      isFetching = false;
+      currentFetchDivision = null;
+      // Jika ada request pindah divisi tertunda yang diblokir oleh isFetching
+      if (!isGuest() && targetDivision !== currentDivision) {
+        fetchDivisionData();
+      }
     }
   }
 }
@@ -725,14 +797,20 @@ function memberDetailPage() {
     } catch(e) {}
   }
 
+  const thisSession = sessionGeneration;
+  const currentMemberId = selectedMemberId;
   fetch(`${API_URL}?action=getTracker&division=${encodeURIComponent(divKey)}&nickname=${encodeURIComponent(namaPanggilan)}${idToken ? '&idToken=' + idToken : ''}`)
     .then(r => r.json())
     .then(res => {
+      if (thisSession !== sessionGeneration || isGuest()) return;
       try { sessionStorage.setItem(cacheKeyTracker, JSON.stringify(res)); } catch(e) {}
-      updateTrackerDOM(res);
+      if (currentPage === "member-detail" && selectedMemberId === currentMemberId) {
+        updateTrackerDOM(res);
+      }
     })
     .catch(() => {
-      if (!cachedTracker) {
+      if (thisSession !== sessionGeneration || isGuest()) return;
+      if (currentPage === "member-detail" && selectedMemberId === currentMemberId && !cachedTracker) {
         const tbody = $("#trackerTableBody");
         if (tbody) tbody.innerHTML = `<tr><td colspan="3" class="empty-cell">Gagal memuat riwayat. Periksa koneksi.</td></tr>`;
       }
@@ -970,8 +1048,12 @@ async function handleSaveProker(e) {
 
 async function sendPostPayload(payload) {
   if (idToken) payload.idToken = idToken;
+  const thisSession = sessionGeneration;
   try {
     const res = await fetch(API_URL, { method: "POST", body: JSON.stringify(payload) }).then(r => r.json());
+    if (thisSession !== sessionGeneration || isGuest()) {
+      return null; // Sesi usang: jangan ubah UI atau trigger sinkronisasi
+    }
     if (res.status === "success") {
       toast(res.message || "Berhasil disimpan!");
       $("#uploadModal")?.close();
@@ -986,6 +1068,7 @@ async function sendPostPayload(payload) {
       return Promise.reject(res.message);
     }
   } catch (err) {
+    if (thisSession !== sessionGeneration || isGuest()) return null;
     toast("Terjadi kesalahan koneksi!");
     return Promise.reject(err);
   }
@@ -1149,8 +1232,8 @@ function handleSaveTracker(e) {
     catatan: $("#formTrackerCatatan").value.trim()
   };
   
-  sendPostPayload(payload).then(() => {
-    if (currentPage === "member-detail") go("member-detail");
+  sendPostPayload(payload).then((res) => {
+    if (res && currentPage === "member-detail") go("member-detail");
   }).catch(() => {});
 }
 
@@ -1172,8 +1255,8 @@ function deleteTrackerRow(divKey, nickname, rowId) {
     nickname: nickname,
     rowId: rowId
   };
-  sendPostPayload(payload).then(() => {
-    if (currentPage === "member-detail") go("member-detail");
+  sendPostPayload(payload).then((res) => {
+    if (res && currentPage === "member-detail") go("member-detail");
   }).catch(() => {});
 }
 
