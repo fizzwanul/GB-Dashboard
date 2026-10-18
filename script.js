@@ -117,10 +117,27 @@ async function initApp() {
   if (window.google) initializeGoogleSignIn();
   else window.addEventListener('load', initializeGoogleSignIn);
 
-  if (isGuest()) await fetchAllMembers();
-  else {
-    render(); // Render dashboard state directly
-    await fetchDivisionData();
+  if (isGuest()) {
+    const cacheKey = "genbi_cache_all_members";
+    let cachedData = null;
+    try { cachedData = sessionStorage.getItem(cacheKey); } catch (e) {}
+    if (cachedData) {
+      try { globalData.allMembers = JSON.parse(cachedData); } catch (e) {}
+    }
+    render();
+    fetchAllMembers();
+  } else {
+    const cacheKey = `genbi_cache_${currentDivision}`;
+    const cachedData = sessionStorage.getItem(cacheKey);
+    if (cachedData) {
+      try {
+        const parsed = JSON.parse(cachedData);
+        globalData.members = parsed.members || [];
+        globalData.tasks = parsed.tasks || [];
+      } catch (e) {}
+    }
+    render(); // Render dashboard state directly dengan data dari cache
+    fetchDivisionData();
   }
 }
 
@@ -630,6 +647,41 @@ function memberDetailPage() {
 
   // Ambil data tracker dari tab perorangan di Google Sheets
   const cacheKeyTracker = `genbi_tracker_${divKey}_${namaPanggilan}`;
+
+  const renderTrackerRows = (dataList) => {
+    if (!dataList || dataList.length === 0) {
+      return `<tr><td colspan="3" class="empty-cell">Belum ada riwayat / Tab '${esc(namaPanggilan)}' tidak ditemukan.</td></tr>`;
+    }
+    return dataList.map((t, idx) => {
+      let dateStr = t.tanggal;
+      if (t.tanggal instanceof Date) dateStr = t.tanggal.toLocaleDateString('id-ID');
+      else if (String(t.tanggal).includes('T')) dateStr = t.tanggal.split('T')[0];
+      
+      let actionBtns = "-";
+      if (canManageTracker && t.rowId) {
+        actionBtns = `
+          <div style="display:flex;gap:4px">
+            <button class="mini-btn" onclick="openTrackerModal('edit', '${divKey}', '${esc(namaPanggilan)}', ${t.rowId}, ${idx})">Edit</button>
+            <button class="mini-btn" style="background:#fce8e8;color:#d32f2f;" onclick="deleteTrackerRow('${divKey}', '${esc(namaPanggilan)}', ${t.rowId})">Hapus</button>
+          </div>
+        `;
+      }
+
+      const poinBadge = canSeePoin
+        ? ` <span class="badge ${t.poin > 0 ? 'badge-green' : (t.poin < 0 ? 'badge-red' : 'badge-gray')}" style="margin-left:8px;">${t.poin > 0 ? '+' : ''}${esc(t.poin)} Poin</span>`
+        : "";
+      
+      return `
+      <tr>
+        <td style="white-space: nowrap;">${esc(dateStr)}</td>
+        <td>
+          <strong>${esc(t.kegiatan)}</strong>${poinBadge}
+          <br><small>${esc(t.catatan)}</small>
+        </td>
+        <td>${actionBtns}</td>
+      </tr>
+    `}).join("");
+  };
   
   const updateTrackerDOM = (res) => {
     if (res.totalPoin !== undefined) {
@@ -653,45 +705,24 @@ function memberDetailPage() {
     
     if (res.status === "error") {
       tbody.innerHTML = `<tr><td colspan="3" class="empty-cell" style="color:#b93a3a;"><strong>Akses Ditolak:</strong> ${esc(res.message)}</td></tr>`;
-    } else if (res.status === "success" && res.data.length > 0) {
+    } else if (res.status === "success" && Array.isArray(res.data)) {
       window.currentTrackerData = res.data; // Simpan untuk edit
-      tbody.innerHTML = res.data.map((t, idx) => {
-        let dateStr = t.tanggal;
-        if (t.tanggal instanceof Date) dateStr = t.tanggal.toLocaleDateString('id-ID');
-        else if (String(t.tanggal).includes('T')) dateStr = t.tanggal.split('T')[0];
-        
-        let actionBtns = "-";
-        if (canManageTracker && t.rowId) {
-          actionBtns = `
-            <div style="display:flex;gap:4px">
-              <button class="mini-btn" onclick="openTrackerModal('edit', '${divKey}', '${esc(namaPanggilan)}', ${t.rowId}, ${idx})">Edit</button>
-              <button class="mini-btn" style="background:#fce8e8;color:#d32f2f;" onclick="deleteTrackerRow('${divKey}', '${esc(namaPanggilan)}', ${t.rowId})">Hapus</button>
-            </div>
-          `;
-        }
-
-        const poinBadge = canSeePoin
-          ? ` <span class="badge ${t.poin > 0 ? 'badge-green' : (t.poin < 0 ? 'badge-red' : 'badge-gray')}" style="margin-left:8px;">${t.poin > 0 ? '+' : ''}${esc(t.poin)} Poin</span>`
-          : "";
-        
-        return `
-        <tr>
-          <td style="white-space: nowrap;">${esc(dateStr)}</td>
-          <td>
-            <strong>${esc(t.kegiatan)}</strong>${poinBadge}
-            <br><small>${esc(t.catatan)}</small>
-          </td>
-          <td>${actionBtns}</td>
-        </tr>
-      `}).join("");
+      tbody.innerHTML = renderTrackerRows(res.data);
     } else {
       tbody.innerHTML = `<tr><td colspan="3" class="empty-cell">Belum ada riwayat / Tab '${esc(namaPanggilan)}' tidak ditemukan.</td></tr>`;
     }
   };
 
+  let initialTbodyHTML = `<tr><td colspan="3" style="text-align:center; padding: 30px;"><em>Memuat riwayat poin...</em></td></tr>`;
   const cachedTracker = sessionStorage.getItem(cacheKeyTracker);
   if (cachedTracker) {
-    try { updateTrackerDOM(JSON.parse(cachedTracker)); } catch(e) {}
+    try {
+      const parsedTracker = JSON.parse(cachedTracker);
+      if (parsedTracker && parsedTracker.status === "success" && Array.isArray(parsedTracker.data)) {
+        window.currentTrackerData = parsedTracker.data;
+        initialTbodyHTML = renderTrackerRows(parsedTracker.data);
+      }
+    } catch(e) {}
   }
 
   fetch(`${API_URL}?action=getTracker&division=${encodeURIComponent(divKey)}&nickname=${encodeURIComponent(namaPanggilan)}${idToken ? '&idToken=' + idToken : ''}`)
@@ -749,7 +780,7 @@ function memberDetailPage() {
             </tr>
           </thead>
           <tbody id="trackerTableBody">
-            <tr><td colspan="2" style="text-align:center; padding: 30px;"><em>Memuat riwayat poin...</em></td></tr>
+            ${initialTbodyHTML}
           </tbody>
         </table>
       </div>
