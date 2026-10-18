@@ -23,6 +23,8 @@ const DIVISION_LABELS = {
 };
 const isGuest = () => !currentUser;
 
+let prokerSortOption = "default";
+
 function isRegionalProkerId(id) {
   if (!id) return false;
   const upper = String(id).trim().toUpperCase();
@@ -36,6 +38,60 @@ function isRegionalProkerId(id) {
 function isGlobalProkerId(id) {
   if (!id) return false;
   return String(id).trim().toUpperCase().startsWith("PG");
+}
+
+function getProkerScopeType(t) {
+  const prokerId = t.iDProker || t.idProker || t.IDProker || t.id || "";
+  if (t.scope === "global" || isGlobalProkerId(prokerId)) return "global";
+  if (t.scope === "regional" || isRegionalProkerId(prokerId)) return "regional";
+  return "local";
+}
+
+function getProkerProgressNum(t) {
+  let raw = Number(t.progres || t.Progres || t['%Progres'] || 0);
+  return (raw > 0 && raw <= 1) ? Math.round(raw * 100) : raw;
+}
+
+function sortTasks(tasks, sortOption) {
+  if (!tasks || !Array.isArray(tasks)) return [];
+  const list = tasks.map((t, idx) => ({ ...t, _origIndex: idx }));
+  
+  if (sortOption === "global-regional-local") {
+    const rank = { global: 1, regional: 2, local: 3 };
+    return list.sort((a, b) => {
+      const diff = rank[getProkerScopeType(a)] - rank[getProkerScopeType(b)];
+      return diff !== 0 ? diff : a._origIndex - b._origIndex;
+    });
+  }
+  
+  if (sortOption === "local-regional-global") {
+    const rank = { local: 1, regional: 2, global: 3 };
+    return list.sort((a, b) => {
+      const diff = rank[getProkerScopeType(a)] - rank[getProkerScopeType(b)];
+      return diff !== 0 ? diff : a._origIndex - b._origIndex;
+    });
+  }
+  
+  if (sortOption === "progres-desc") {
+    return list.sort((a, b) => {
+      const diff = getProkerProgressNum(b) - getProkerProgressNum(a);
+      return diff !== 0 ? diff : a._origIndex - b._origIndex;
+    });
+  }
+  
+  if (sortOption === "progres-asc") {
+    return list.sort((a, b) => {
+      const diff = getProkerProgressNum(a) - getProkerProgressNum(b);
+      return diff !== 0 ? diff : a._origIndex - b._origIndex;
+    });
+  }
+  
+  return list;
+}
+
+function handleSortProker(val) {
+  prokerSortOption = val;
+  render();
 }
 
 // === 1. INISIALISASI: GOOGLE LOGIN ===
@@ -354,22 +410,27 @@ function taskRow(t) {
 
   const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
   const isAdmin = roleLower.includes("admin");
+  const isAudit = roleLower.includes("audit");
   const isKoord = roleLower.includes("koordinator") || roleLower.includes("kord");
   const isGlobalScope = t.scope === "global" || isGlobalProkerId(prokerId);
   const isRegionalScope = t.scope === "regional" || isRegionalProkerId(prokerId);
   
-  // Member & Audit: hanya melihat proker dan membuka link.
-  // Koordinator: boleh menambah, mengedit, dan menghapus proker Local pada divisinya sendiri, Regional pada divisinya sendiri, serta Global.
-  // Admin: akses penuh.
-  const canManage = isAdmin || (isKoord && (isGlobalScope || currentUser.divisionKey === currentDivision));
+  // Admin: akses penuh (edit & hapus).
+  // Audit: boleh mengedit KPI di seluruh divisi, tidak menghapus proker.
+  // Koordinator: boleh mengedit & menghapus proker divisinya sendiri serta Global.
+  // Member: hanya melihat (read-only).
+  const canEdit = isAdmin || isAudit || (isKoord && (isGlobalScope || currentUser.divisionKey === currentDivision));
+  const canDelete = isAdmin || (isKoord && (isGlobalScope || currentUser.divisionKey === currentDivision));
 
   let actionsHTML = "-";
-  if (canManage) {
+  if (canEdit || canDelete) {
     const scopeVal = isGlobalScope ? "global" : (isRegionalScope ? "regional" : "local");
+    const editBtn = canEdit ? `<button class="mini-btn" onclick="openUploadModal('${esc(prokerId)}')">Edit</button>` : "";
+    const deleteBtn = canDelete ? `<button class="mini-btn" style="background:#fce8e8;color:#d32f2f;" onclick="handleDeleteProker('${esc(prokerId)}', '${scopeVal}')">Hapus</button>` : "";
     actionsHTML = `
       <div style="display:flex;align-items:center;gap:4px">
-        <button class="mini-btn" onclick="openUploadModal('${esc(prokerId)}')">Edit</button>
-        <button class="mini-btn" style="background:#fce8e8;color:#d32f2f;" onclick="handleDeleteProker('${esc(prokerId)}', '${scopeVal}')">Hapus</button>
+        ${editBtn}
+        ${deleteBtn}
       </div>
     `;
   }
@@ -405,8 +466,9 @@ function taskRow(t) {
 }
 
 function tasksPage() {
-  const tasks = globalData.tasks || [];
-  const rows = tasks.map(taskRow).join("");
+  const rawTasks = globalData.tasks || [];
+  const sortedTasks = sortTasks(rawTasks, prokerSortOption);
+  const rows = sortedTasks.map(taskRow).join("");
   
   const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
   const isAdmin = roleLower.includes("admin");
@@ -417,8 +479,24 @@ function tasksPage() {
     addBtn = `<button class="btn btn-primary" onclick="handleAddProkerPrompt()">+ Tambah Proker Baru</button>`;
   }
 
+  const sortControls = `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:6px">
+        <label for="prokerSortSelect" style="font-size:0.82em;font-weight:600;color:var(--text-muted);white-space:nowrap;">Urutan:</label>
+        <select id="prokerSortSelect" class="select" onchange="handleSortProker(this.value)" style="padding:6px 10px;font-size:0.85em;border-radius:6px;">
+          <option value="default" ${prokerSortOption === 'default' ? 'selected' : ''}>Standar</option>
+          <option value="global-regional-local" ${prokerSortOption === 'global-regional-local' ? 'selected' : ''}>Global → Regional → Local</option>
+          <option value="local-regional-global" ${prokerSortOption === 'local-regional-global' ? 'selected' : ''}>Local → Regional → Global</option>
+          <option value="progres-desc" ${prokerSortOption === 'progres-desc' ? 'selected' : ''}>Progres Tertinggi → Terendah</option>
+          <option value="progres-asc" ${prokerSortOption === 'progres-asc' ? 'selected' : ''}>Progres Terendah → Tertinggi</option>
+        </select>
+      </div>
+      ${addBtn}
+    </div>
+  `;
+
   return `
-    ${head("DATA & MONITORING", "Monitoring Tugas", "Pantau tugas, progres, bukti, dan catatan situasi khusus.", addBtn)}
+    ${head("DATA & MONITORING", "Monitoring Tugas", "Pantau tugas, progres, bukti, dan catatan situasi khusus.", sortControls)}
     <section class="panel">
       <div class="table-wrap">
         <table>
@@ -647,15 +725,6 @@ function memberDetailPage() {
       
       ${stat("Divisi", esc(m.divisi || DIVISION_LABELS[divKey] || divKey), "▣", "purple", "Divisi aktif")}
       ${stat("Role / Jabatan", esc(m.role || m.jabatan || "Anggota"), "✦", "green", "Posisi kepengurusan")}
-      
-      <article class="stat-card">
-        <div class="stat-top">
-          <span class="stat-label">Total Poin Keaktifan</span>
-          <span class="stat-icon orange">★</span>
-        </div>
-        <div class="stat-value" id="progressText">—</div>
-        <div class="stat-foot" id="progressStatus">Memuat evaluasi...</div>
-      </article>
     </div>
 
     <section class="panel">
@@ -694,9 +763,10 @@ function openUploadModal(idProker) {
   
   const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
   const isAdmin = roleLower.includes("admin");
+  const isAudit = roleLower.includes("audit");
   const isKoord = roleLower.includes("koordinator") || roleLower.includes("kord");
   const isGlobalScope = task.scope === "global" || isGlobalProkerId(idProker);
-  const canManage = isAdmin || (isKoord && (isGlobalScope || currentUser.divisionKey === currentDivision));
+  const canManage = isAdmin || isAudit || (isKoord && (isGlobalScope || currentUser.divisionKey === currentDivision));
   if (!canManage) {
     toast("Akses ditolak: Anda tidak memiliki hak untuk mengedit proker ini.");
     return;
@@ -718,6 +788,17 @@ function openUploadModal(idProker) {
   let tgl = task.tenggat || task.tenggatWaktu || "";
   if (String(tgl).includes('T')) tgl = String(tgl).split('T')[0];
   $("#formTenggat").value = tgl;
+
+  // Validasi hak akses tenggat waktu: Hanya Audit dan Admin yang dapat mengatur / mengedit
+  const canEditTenggat = isAdmin || isAudit;
+  const tenggatInput = $("#formTenggat");
+  if (tenggatInput) {
+    tenggatInput.disabled = !canEditTenggat;
+  }
+  const tenggatHelp = $("#formTenggatHelp");
+  if (tenggatHelp) {
+    tenggatHelp.style.display = canEditTenggat ? "none" : "block";
+  }
   
   $("#uploadModal")?.showModal();
 }
@@ -812,8 +893,9 @@ async function handleSaveProker(e) {
 
   const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
   const isAdmin = roleLower.includes("admin");
+  const isAudit = roleLower.includes("audit");
   const isKoord = roleLower.includes("koordinator") || roleLower.includes("kord");
-  const canManage = isAdmin || (isKoord && (isGlobal || currentUser.divisionKey === currentDivision));
+  const canManage = isAdmin || isAudit || (isKoord && (isGlobal || currentUser.divisionKey === currentDivision));
   if (!canManage) {
     toast("Akses ditolak: Anda tidak memiliki hak untuk mengedit proker ini.");
     return;
@@ -825,18 +907,21 @@ async function handleSaveProker(e) {
     submitBtn.textContent = "Menyimpan...";
   }
 
+  const canEditTenggat = isAdmin || isAudit;
   const payload = {
     action: "uploadEvidence",
     division: currentDivision,
     scope: isGlobal ? "global" : (isRegional ? "regional" : "local"),
     idProker: idProker,
-   progres: Number($("#formProgres").value),
-   status: $("#formStatus").value,
-   pic: $("#formPic").value.trim(),
-   catatan: $("#formCatatan").value.trim(),
-   tenggat: $("#formTenggat").value,
-   linkBukti: $("#formLinkBukti").value.trim()
+    progres: Number($("#formProgres").value),
+    status: $("#formStatus").value,
+    pic: $("#formPic").value.trim(),
+    catatan: $("#formCatatan").value.trim(),
+    linkBukti: $("#formLinkBukti").value.trim()
   };
+  if (canEditTenggat) {
+    payload.tenggat = $("#formTenggat").value;
+  }
 
   toast("Menyimpan data ke Google Sheets...");
   await sendPostPayload(payload);
