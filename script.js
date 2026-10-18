@@ -625,6 +625,8 @@ function memberDetailPage() {
   const isAudit = roleLower.includes("audit");
   // Hanya Admin dan Audit yang memiliki hak untuk mengelola tracker
   const canManageTracker = isAdmin || isAudit;
+  // Hanya Admin dan Audit yang dapat melihat nominal poin per aktivitas (disembunyikan untuk Member biasa)
+  const canSeePoin = isAdmin || isAudit;
 
   // Ambil data tracker dari tab perorangan di Google Sheets
   const cacheKeyTracker = `genbi_tracker_${divKey}_${namaPanggilan}`;
@@ -667,13 +669,16 @@ function memberDetailPage() {
             </div>
           `;
         }
+
+        const poinBadge = canSeePoin
+          ? ` <span class="badge ${t.poin > 0 ? 'badge-green' : (t.poin < 0 ? 'badge-red' : 'badge-gray')}" style="margin-left:8px;">${t.poin > 0 ? '+' : ''}${esc(t.poin)} Poin</span>`
+          : "";
         
         return `
         <tr>
           <td style="white-space: nowrap;">${esc(dateStr)}</td>
           <td>
-            <strong>${esc(t.kegiatan)}</strong> 
-            <span class="badge ${t.poin > 0 ? 'badge-green' : (t.poin < 0 ? 'badge-red' : 'badge-gray')}" style="margin-left:8px;">${t.poin > 0 ? '+' : ''}${esc(t.poin)} Poin</span>
+            <strong>${esc(t.kegiatan)}</strong>${poinBadge}
             <br><small>${esc(t.catatan)}</small>
           </td>
           <td>${actionBtns}</td>
