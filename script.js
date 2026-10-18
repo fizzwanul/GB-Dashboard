@@ -23,6 +23,21 @@ const DIVISION_LABELS = {
 };
 const isGuest = () => !currentUser;
 
+function isRegionalProkerId(id) {
+  if (!id) return false;
+  const upper = String(id).trim().toUpperCase();
+  return upper.startsWith("RPS") ||
+         upper.startsWith("RPM") ||
+         upper.startsWith("RLH") ||
+         upper.startsWith("RK") ||
+         (upper.startsWith("RP") && !/^[A-Z]/.test(upper.substring(2)));
+}
+
+function isGlobalProkerId(id) {
+  if (!id) return false;
+  return String(id).trim().toUpperCase().startsWith("PG");
+}
+
 // === 1. INISIALISASI: GOOGLE LOGIN ===
 async function initApp() {
   const savedUser = sessionStorage.getItem("genbi_user");
@@ -126,9 +141,18 @@ function applyRolePermissions() {
   const guest = isGuest();
   const select = $("#divisionSelect");
   if (select) {
-    select.disabled = false;
+    const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
+    const hasGlobalAccess = roleLower.includes("admin") || roleLower.includes("audit");
+    // Non-Admin/Non-Audit (Koordinator & Member) hanya boleh melihat divisinya sendiri
+    if (!guest && !hasGlobalAccess && currentUser && currentUser.divisionKey) {
+      currentDivision = currentUser.divisionKey;
+      select.value = currentUser.divisionKey;
+      select.disabled = true;
+    } else {
+      select.disabled = false;
+      if (!guest && currentUser && currentUser.divisionKey) select.value = currentDivision;
+    }
     select.style.display = guest ? "none" : "";
-    if (!guest && currentUser && currentUser.divisionKey) select.value = currentDivision;
   }
   
   $$(".nav-item").forEach(b => {
@@ -331,23 +355,37 @@ function taskRow(t) {
   const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
   const isAdmin = roleLower.includes("admin");
   const isKoord = roleLower.includes("koordinator") || roleLower.includes("kord");
-  const isGlobalScope = t.scope === "global";
+  const isGlobalScope = t.scope === "global" || isGlobalProkerId(prokerId);
+  const isRegionalScope = t.scope === "regional" || isRegionalProkerId(prokerId);
   
+  // Member & Audit: hanya melihat proker dan membuka link.
+  // Koordinator: boleh menambah, mengedit, dan menghapus proker Local pada divisinya sendiri, Regional pada divisinya sendiri, serta Global.
+  // Admin: akses penuh.
   const canManage = isAdmin || (isKoord && (isGlobalScope || currentUser.divisionKey === currentDivision));
 
   let actionsHTML = "-";
   if (canManage) {
+    const scopeVal = isGlobalScope ? "global" : (isRegionalScope ? "regional" : "local");
     actionsHTML = `
       <div style="display:flex;align-items:center;gap:4px">
         <button class="mini-btn" onclick="openUploadModal('${esc(prokerId)}')">Edit</button>
-        <button class="mini-btn" style="background:#fce8e8;color:#d32f2f;" onclick="handleDeleteProker('${esc(prokerId)}', '${isGlobalScope ? 'global' : 'divisi'}')">Hapus</button>
+        <button class="mini-btn" style="background:#fce8e8;color:#d32f2f;" onclick="handleDeleteProker('${esc(prokerId)}', '${scopeVal}')">Hapus</button>
       </div>
     `;
   }
 
+  let scopeBadge = "";
+  if (isGlobalScope) {
+    scopeBadge = ' <span class="badge badge-purple" style="font-size:0.7em">Global</span>';
+  } else if (isRegionalScope) {
+    scopeBadge = ' <span class="badge badge-blue" style="font-size:0.7em">Regional</span>';
+  } else {
+    scopeBadge = ' <span class="badge badge-gray" style="font-size:0.7em">Local</span>';
+  }
+
   return `
     <tr>
-      <td><strong>${esc(prokerId)}</strong>${isGlobalScope ? ' <span class="badge badge-purple" style="font-size:0.7em">Global</span>' : ''}</td>
+      <td><strong>${esc(prokerId)}</strong>${scopeBadge}</td>
       <td>${esc(namaTugas)}</td>
       <td>${esc(t.divisi || currentDivision)}</td>
       <td>${esc(picTugas)}</td>
@@ -507,8 +545,8 @@ function memberDetailPage() {
   const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
   const isAdmin = roleLower.includes("admin");
   const isAudit = roleLower.includes("audit");
-  const isKoord = roleLower.includes("koordinator") || roleLower.includes("kord");
-  const canManageTracker = isAdmin || isAudit || (isKoord && currentUser.divisionKey === divKey);
+  // Hanya Admin dan Audit yang memiliki hak untuk mengelola tracker
+  const canManageTracker = isAdmin || isAudit;
 
   // Ambil data tracker dari tab perorangan di Google Sheets
   const cacheKeyTracker = `genbi_tracker_${divKey}_${namaPanggilan}`;
@@ -516,30 +554,17 @@ function memberDetailPage() {
   const updateTrackerDOM = (res) => {
     if (res.totalPoin !== undefined) {
       const totalPoin = Number(res.totalPoin) || 0;
-      const targetPoin = 25;
-      const percent = Math.min(100, Math.max(0, Math.round((totalPoin / targetPoin) * 100)));
       const statusText = res.statusEvaluasi || "Belum memenuhi";
-      const strokeColor = statusText === "Memenuhi" ? "#4caf50" : (totalPoin > 0 ? "#ff9800" : "#ccc");
-      
-      const circle = $("#progressCircle");
-      if (circle) {
-        circle.setAttribute("stroke-dasharray", `${percent}, 100`);
-        circle.setAttribute("stroke", strokeColor);
-      }
-      
-      const pctEl = $("#progressPercent");
-      if (pctEl) {
-        pctEl.textContent = `${percent}%`;
-        pctEl.style.color = strokeColor;
-      }
+      const statusColor = statusText === "Memenuhi" ? "#15966a" : (totalPoin > 0 ? "#e88a22" : "#71819a");
       
       const txtEl = $("#progressText");
-      if (txtEl) txtEl.textContent = `${totalPoin} / ${targetPoin}`;
+      if (txtEl) txtEl.textContent = `${totalPoin} Poin`;
       
       const statusEl = $("#progressStatus");
       if (statusEl) {
         statusEl.textContent = statusText;
-        statusEl.style.color = strokeColor;
+        statusEl.style.color = statusColor;
+        statusEl.style.fontWeight = "600";
       }
     }
 
@@ -605,7 +630,7 @@ function memberDetailPage() {
   }
 
   return `
-    ${head("MONITORING ANGGOTA", "Detail Anggota", `Profil dan riwayat poin keaktifan ${esc(m.namaLengkap || m.nama)}.`, backBtn)}
+    ${head("MONITORING ANGGOTA", "Detail Anggota", `Profil dan riwayat keaktifan ${esc(m.namaLengkap || m.nama)}.`, backBtn)}
     
     <div class="stats-grid">
       <article class="stat-card">
@@ -623,28 +648,20 @@ function memberDetailPage() {
       ${stat("Divisi", esc(m.divisi || DIVISION_LABELS[divKey] || divKey), "▣", "purple", "Divisi aktif")}
       ${stat("Role / Jabatan", esc(m.role || m.jabatan || "Anggota"), "✦", "green", "Posisi kepengurusan")}
       
-      <article class="stat-card" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding: 15px;">
-        <span style="font-size:12px; color:#666; align-self:flex-start;">Total Poin Keaktifan</span>
-        <div style="position:relative; width:70px; height:70px;">
-          <svg viewBox="0 0 36 36" style="width:100%; height:100%;">
-            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#eee" stroke-width="3.5" />
-            <path id="progressCircle" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#ccc" stroke-width="3.5" stroke-dasharray="0, 100" />
-          </svg>
-          <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-weight:bold; font-size:14px; text-align:center;">
-            <span id="progressPercent">0%</span>
-          </div>
+      <article class="stat-card">
+        <div class="stat-top">
+          <span class="stat-label">Total Poin Keaktifan</span>
+          <span class="stat-icon orange">★</span>
         </div>
-        <div style="text-align:center; line-height:1.2;">
-          <div id="progressText" style="font-weight:600; font-size:14px;">- / 25</div>
-          <div id="progressStatus" style="font-size:12px; color:#666;">Memuat...</div>
-        </div>
+        <div class="stat-value" id="progressText">—</div>
+        <div class="stat-foot" id="progressStatus">Memuat evaluasi...</div>
       </article>
     </div>
 
     <section class="panel">
       <div class="panel-head">
         <div>
-          <h2>Riwayat Poin Keaktifan</h2>
+          <h2>Riwayat Keaktifan</h2>
           <p>Daftar riwayat aktivitas, keaktifan, dan evaluasi anggota.</p>
         </div>
       </div>
@@ -675,6 +692,16 @@ function openUploadModal(idProker) {
     return;
   }
   
+  const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
+  const isAdmin = roleLower.includes("admin");
+  const isKoord = roleLower.includes("koordinator") || roleLower.includes("kord");
+  const isGlobalScope = task.scope === "global" || isGlobalProkerId(idProker);
+  const canManage = isAdmin || (isKoord && (isGlobalScope || currentUser.divisionKey === currentDivision));
+  if (!canManage) {
+    toast("Akses ditolak: Anda tidak memiliki hak untuk mengedit proker ini.");
+    return;
+  }
+
   $("#formProkerId").value = idProker;
   $("#modalProkerTitle").textContent = `Update: ${task.namaProgramKerja || task.namaProker || idProker}`;
   
@@ -702,12 +729,24 @@ function handleAddProkerPrompt() {
   const isAdmin = roleLower.includes("admin");
   const isKoord = roleLower.includes("koordinator") || roleLower.includes("kord");
   
-  if (isAdmin || isKoord) {
+  if (isAdmin) {
     $("#addProkerScopeContainer").style.display = "block";
-    $("#addProkerScope").value = "divisi"; // default
+    $("#addProkerScope").querySelectorAll("option").forEach(opt => opt.disabled = false);
+    $("#addProkerScope").value = "local"; // default
+  } else if (isKoord) {
+    $("#addProkerScopeContainer").style.display = "block";
+    if (currentDivision !== currentUser.divisionKey) {
+      $("#addProkerScope").value = "global";
+      $("#addProkerScope").querySelectorAll("option").forEach(opt => {
+        opt.disabled = (opt.value !== "global");
+      });
+    } else {
+      $("#addProkerScope").querySelectorAll("option").forEach(opt => opt.disabled = false);
+      $("#addProkerScope").value = "local";
+    }
   } else {
     $("#addProkerScopeContainer").style.display = "none";
-    $("#addProkerScope").value = "divisi";
+    $("#addProkerScope").value = "local";
   }
 
   $("#addProkerModal")?.showModal();
@@ -716,9 +755,18 @@ function handleAddProkerPrompt() {
 function submitAddProker(e) {
   e.preventDefault();
   const namaProker = $("#addProkerName").value.trim();
-  const scope = $("#addProkerScope").value;
+  const scope = $("#addProkerScope").value || "local";
   
   if (!namaProker) return;
+
+  const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
+  const isAdmin = roleLower.includes("admin");
+  const isKoord = roleLower.includes("koordinator") || roleLower.includes("kord");
+
+  if (!isAdmin && (!isKoord || (scope !== "global" && currentDivision !== currentUser.divisionKey))) {
+    toast("Akses ditolak: Koordinator hanya dapat menambah proker Local/Regional di divisinya sendiri.");
+    return;
+  }
   
   $("#addProkerModal")?.close();
   toast("Menyiapkan proker baru...");
@@ -734,19 +782,43 @@ function submitAddProker(e) {
 }
 
 function handleDeleteProker(idProker, scope) {
+  const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
+  const isAdmin = roleLower.includes("admin");
+  const isKoord = roleLower.includes("koordinator") || roleLower.includes("kord");
+  const isGlobalScope = scope === "global" || isGlobalProkerId(idProker);
+  const canManage = isAdmin || (isKoord && (isGlobalScope || currentUser.divisionKey === currentDivision));
+  if (!canManage) {
+    toast("Akses ditolak: Anda tidak memiliki hak untuk menghapus proker ini.");
+    return;
+  }
+
   if (!confirm(`Apakah Anda yakin ingin menghapus proker ${idProker}? Tindakan ini tidak dapat dibatalkan.`)) return;
   
   toast(`Menghapus proker ${idProker}...`);
+  const effectiveScope = scope || (isGlobalScope ? "global" : (isRegionalProkerId(idProker) ? "regional" : "local"));
   sendPostPayload({
     action: "deleteProker",
     division: currentDivision,
-    scope: scope,
+    scope: effectiveScope,
     idProker: idProker
   });
 }
 
 async function handleSaveProker(e) {
   e.preventDefault();
+  const idProker = $("#formProkerId").value;
+  const isGlobal = isGlobalProkerId(idProker);
+  const isRegional = isRegionalProkerId(idProker);
+
+  const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
+  const isAdmin = roleLower.includes("admin");
+  const isKoord = roleLower.includes("koordinator") || roleLower.includes("kord");
+  const canManage = isAdmin || (isKoord && (isGlobal || currentUser.divisionKey === currentDivision));
+  if (!canManage) {
+    toast("Akses ditolak: Anda tidak memiliki hak untuk mengedit proker ini.");
+    return;
+  }
+
   const submitBtn = e.target.querySelector('button[type="submit"]');
   if (submitBtn) {
     submitBtn.disabled = true;
@@ -755,8 +827,9 @@ async function handleSaveProker(e) {
 
   const payload = {
     action: "uploadEvidence",
-   division: currentDivision,
-   idProker: $("#formProkerId").value,
+    division: currentDivision,
+    scope: isGlobal ? "global" : (isRegional ? "regional" : "local"),
+    idProker: idProker,
    progres: Number($("#formProgres").value),
    status: $("#formStatus").value,
    pic: $("#formPic").value.trim(),
@@ -889,6 +962,14 @@ initApp();
 window.currentTrackerContext = {};
 
 function openTrackerModal(action, divKey, nickname, rowId = null, dataIdx = null) {
+  const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
+  const isAdmin = roleLower.includes("admin");
+  const isAudit = roleLower.includes("audit");
+  if (!isAdmin && !isAudit) {
+    toast("Akses ditolak: Hanya Admin dan Audit yang memiliki hak untuk mengelola riwayat keaktifan.");
+    return;
+  }
+
   window.currentTrackerContext = { action, divKey, nickname, rowId };
   $("#trackerModalTitle").textContent = action === "add" ? "Tambah Riwayat" : "Edit Riwayat";
   $("#formTrackerAction").value = action;
@@ -921,6 +1002,14 @@ function openTrackerModal(action, divKey, nickname, rowId = null, dataIdx = null
 
 function handleSaveTracker(e) {
   e.preventDefault();
+  const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
+  const isAdmin = roleLower.includes("admin");
+  const isAudit = roleLower.includes("audit");
+  if (!isAdmin && !isAudit) {
+    toast("Akses ditolak: Hanya Admin dan Audit yang memiliki hak untuk mengelola riwayat keaktifan.");
+    return;
+  }
+
   const ctx = window.currentTrackerContext;
   if (!ctx || !ctx.divKey) return;
   
@@ -945,6 +1034,14 @@ function handleSaveTracker(e) {
 }
 
 function deleteTrackerRow(divKey, nickname, rowId) {
+  const roleLower = currentUser && currentUser.role ? String(currentUser.role).toLowerCase() : "";
+  const isAdmin = roleLower.includes("admin");
+  const isAudit = roleLower.includes("audit");
+  if (!isAdmin && !isAudit) {
+    toast("Akses ditolak: Hanya Admin dan Audit yang memiliki hak untuk mengelola riwayat keaktifan.");
+    return;
+  }
+
   if (!confirm("Hapus baris riwayat ini? Tindakan ini tidak dapat dibatalkan.")) return;
   toast("Menghapus riwayat...");
   const payload = {
